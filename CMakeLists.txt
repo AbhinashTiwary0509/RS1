@@ -32,5 +32,13 @@ install(TARGETS
   #  minimal_opencv_ros2_node
    DESTINATION lib/${PROJECT_NAME}
  )
+
+ install(DIRECTORY launch models worlds
+  DESTINATION share/${PROJECT_NAME}/
+)
  
+install(DIRECTORY include/
+  DESTINATION include/
+)
+
 ament_package()
