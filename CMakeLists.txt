@@ -33,12 +33,12 @@ install(TARGETS
    DESTINATION lib/${PROJECT_NAME}
  )
 
- install(DIRECTORY launch models worlds
+ install(DIRECTORY launch models worlds urdf
   DESTINATION share/${PROJECT_NAME}/
 )
  
-install(DIRECTORY include/
-  DESTINATION include/
-)
+# install(DIRECTORY include/
+#   DESTINATION include/
+# )
 
 ament_package()
