@@ -1,0 +1,42 @@
+<?xml version="1.0" ?>
+<sdf version="1.6">
+  <model name="New_shelf">
+    <static>true</static>
+    <link name="link">
+      <!-- Visual -->
+      <visual name="visual">
+        <geometry>
+          <mesh>
+            <uri>model://New_shelf/Meshes/New_shelf.dae</uri>
+          </mesh>
+        </geometry>
+      </visual>
+      
+      <!-- Collision -->
+      <collision name="collision">
+        <geometry>
+          <mesh>
+            <uri>model://New_shelf/Meshes/New_shelf.dae</uri>
+          </mesh>
+        </geometry>
+      </collision>
+      
+      <!-- Inertial -->
+      <inertial>
+        <mass>1.0</mass>
+        <inertia>
+          <ixx>0.01</ixx>
+          <ixy>0.0</ixy>
+          <ixz>0.0</ixz>
+          <iyy>0.01</iyy>
+          <iyz>0.0</iyz>
+          <izz>0.01</izz>
+        </inertia>
+      </inertial>
+      
+      <!-- Pose -->
+      <pose>0 0 0 0 0 0</pose>
+      
+    </link>
+  </model>
+</sdf>
