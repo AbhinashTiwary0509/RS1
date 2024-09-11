@@ -136,18 +136,18 @@
         <enable_wind>0</enable_wind>
         <kinematic>0</kinematic>
       </link>
-      <pose>-0.326935 9.70338 0 0 -0 0</pose>
+      <pose>-1.03631 -3.37394 0 0 -0 0</pose>
     </model>
     <state world_name='default'>
-      <sim_time>132 198000000</sim_time>
-      <real_time>378 182521505</real_time>
-      <wall_time>1726034061 525422359</wall_time>
-      <iterations>132198</iterations>
+      <sim_time>189 635000000</sim_time>
+      <real_time>338 81509691</real_time>
+      <wall_time>1725783694 513136241</wall_time>
+      <iterations>189635</iterations>
       <model name='factoryv3'>
-        <pose>-0.326935 9.70338 0 0 -0 0</pose>
+        <pose>-1.03631 -3.37394 0 0 -0 0</pose>
         <scale>1 1 1</scale>
         <link name='link'>
-          <pose>-0.326935 9.70338 0 0 -0 0</pose>
+          <pose>-1.03631 -3.37394 0 0 -0 0</pose>
           <velocity>0 0 0 0 -0 0</velocity>
           <acceleration>0 0 0 0 -0 0</acceleration>
           <wrench>0 0 0 0 -0 0</wrench>
@@ -169,7 +169,7 @@
     </state>
     <gui fullscreen='0'>
       <camera name='user_camera'>
-        <pose>5.01899 -4.11707 4.15985 0 0.275643 2.35619</pose>
+        <pose>-4.33807 -4.89925 8.10031 0 0.899643 0.836199</pose>
         <view_controller>orbit</view_controller>
         <projection_type>perspective</projection_type>
       </camera>
