@@ -13,6 +13,12 @@ find_package(sensor_msgs REQUIRED)
 find_package(cv_bridge REQUIRED)
 find_package(image_transport REQUIRED)
 find_package(OpenCV REQUIRED)
+find_package(nav_msgs REQUIRED)
+find_package(nav2_msgs REQUIRED)
+find_package(rclcpp_action REQUIRED)
+
+add_executable(manualNav2GoalExe src/manualNav2Goal.cpp)
+ament_target_dependencies(manualNav2GoalExe rclcpp std_msgs sensor_msgs nav_msgs rclcpp_action nav2_msgs)
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
@@ -29,8 +35,8 @@ endif()
 # add_executable(minimal_opencv_ros2_node src/minimal_opencv_ros2_node.cpp)
 # ament_target_dependencies(minimal_opencv_ros2_node rclcpp std_msgs sensor_msgs cv_bridge image_transport OpenCV)
 install(TARGETS
-  #  minimal_opencv_ros2_node
-   DESTINATION lib/${PROJECT_NAME}
+    manualNav2GoalExe
+    DESTINATION lib/${PROJECT_NAME}
  )
 
  install(DIRECTORY launch models worlds urdf
