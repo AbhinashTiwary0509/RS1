@@ -14,7 +14,7 @@ def generate_launch_description():
     x_pose = LaunchConfiguration('x_pose', default='0')
     y_pose = LaunchConfiguration('y_pose', default='0')
 
-    world = os.path.join(get_package_share_directory('smart_factory'), 'worlds', 'factoryworldtwo.world')
+    world = os.path.join(get_package_share_directory('smart_factory'), 'worlds', 'factoryv4world.world')
     
     gzserver_cmd = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
