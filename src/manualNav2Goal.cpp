@@ -21,6 +21,8 @@ enum dirEnum {
   WEST
 }; 
 
+//dummy change
+
 struct goalStruct {
     double xPos = 0;
     double yPos = 0;
