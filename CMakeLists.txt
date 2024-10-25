@@ -17,8 +17,8 @@ find_package(nav_msgs REQUIRED)
 find_package(nav2_msgs REQUIRED)
 find_package(rclcpp_action REQUIRED)
 
-add_executable(manualNav2GoalExe src/manualNav2Goal.cpp)
-ament_target_dependencies(manualNav2GoalExe rclcpp std_msgs sensor_msgs nav_msgs rclcpp_action nav2_msgs)
+add_executable(MasterControlNodeExe src/MasterControlNode.cpp)
+ament_target_dependencies(MasterControlNodeExe rclcpp std_msgs sensor_msgs nav_msgs rclcpp_action nav2_msgs)
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
@@ -35,7 +35,7 @@ endif()
 # add_executable(minimal_opencv_ros2_node src/minimal_opencv_ros2_node.cpp)
 # ament_target_dependencies(minimal_opencv_ros2_node rclcpp std_msgs sensor_msgs cv_bridge image_transport OpenCV)
 install(TARGETS
-    manualNav2GoalExe
+    MasterControlNodeExe
     DESTINATION lib/${PROJECT_NAME}
  )
 
