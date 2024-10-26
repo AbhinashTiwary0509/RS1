@@ -265,7 +265,7 @@ public:
     void pickupDropoffObjectToggle(bool pickupDropoff, int ID = -1){ //true for object being picked up false otherwise
         if(pickupDropoff){
             objectHeld_ = true;
-            std::cout << "[ROBOT] picked up object" << std::endl;
+            std::cout << "[ROBOT] picking up object" << std::endl;
             heldObjectID_ = ID;
         }else{
             objectHeld_ = false;
@@ -289,45 +289,45 @@ MasterControlNode() : Node("MasterControlNode"){
 
     //testing########################
     // Initialize GUI
-    std::this_thread::sleep_for(std::chrono::seconds(2));
-    init_gui();
+    // std::this_thread::sleep_for(std::chrono::seconds(2));
+    // init_gui();
     
 
     //testing###############
 
-    // programStartXPos_ = 0;
-    // programStartYPos_ = 0;
-    // programStartYaw_ = 0;
+    programStartXPos_ = 0;
+    programStartYPos_ = 0;
+    programStartYaw_ = 0;
 
-    // // Initialize the action client
-    // client_ptr_NAV2POSE = rclcpp_action::create_client<NavigateToPose>(this, "navigate_to_pose");
+    // Initialize the action client
+    client_ptr_NAV2POSE = rclcpp_action::create_client<NavigateToPose>(this, "navigate_to_pose");
 
-    // // Wait until the action server is available
-    // while (!client_ptr_NAV2POSE->wait_for_action_server(std::chrono::seconds(5))){
-    //         RCLCPP_INFO(this->get_logger(), "Waiting for the action server to be available...");
-    // }
+    // Wait until the action server is available
+    while (!client_ptr_NAV2POSE->wait_for_action_server(std::chrono::seconds(5))){
+            RCLCPP_INFO(this->get_logger(), "Waiting for the action server to be available...");
+    }
 
-    // //instial pose publisher
-    // initial_pose_publisher_ = this->create_publisher<geometry_msgs::msg::PoseWithCovarianceStamped>("initialpose", 10);
-    // publish_initial_pose();
+    //instial pose publisher
+    initial_pose_publisher_ = this->create_publisher<geometry_msgs::msg::PoseWithCovarianceStamped>("initialpose", 10);
+    publish_initial_pose();
 
-    // for(int i = 0; i < 10; i++){
-    //     publish_initial_pose();
-    //     std::this_thread::sleep_for(std::chrono::milliseconds(500));
-    // }
+    for(int i = 0; i < 10; i++){
+        publish_initial_pose();
+        std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    }
 
-    // std::this_thread::sleep_for(std::chrono::seconds(2));
+    std::this_thread::sleep_for(std::chrono::seconds(2));
 
-    // goalAssignerTimer_ = this->create_wall_timer(1000ms, std::bind(&MasterControlNode::goalManagerTimer_callback, this)); //timer runs every second and decides if goals should be assigned
+    goalAssignerTimer_ = this->create_wall_timer(1000ms, std::bind(&MasterControlNode::goalManagerTimer_callback, this)); //timer runs every second and decides if goals should be assigned
 
-    // //intialise robot
-    // robot robotInstance;
-    // robotInstance.setRobotID(0);
-    // robots_.push_back(robotInstance);
-    // targetRobotID_ = 0;
+    //intialise robot
+    robot robotInstance;
+    robotInstance.setRobotID(0);
+    robots_.push_back(robotInstance);
+    targetRobotID_ = 0;
 
-    // //initialise object storage
-    // storage_ = ObjectStorage();
+    //initialise object storage
+    storage_ = ObjectStorage();
   }
 
 private:
@@ -389,7 +389,24 @@ private:
             }
         };
 
+        // Store the current goal handle using shared_future
+        // auto future_handle = client_ptr_NAV2POSE->async_send_goal(goal_msg, send_goal_options);
         client_ptr_NAV2POSE->async_send_goal(goal_msg, send_goal_options);
+        // std::cout << "testing flow 1" << std::endl;
+
+
+        // Wait for the future to be ready and get the goal handle
+        // try {
+        //     std::cout << "testing flow 2" << std::endl;
+        //     current_goal_handle_ = future_handle.get();  // Get the GoalHandle
+        //     std::cout << "testing flow 2.5" << std::endl;
+        // } catch (const std::exception &e) {
+        //     std::cout << "testing flow 2.8" << std::endl;
+        //     RCLCPP_ERROR(this->get_logger(), "Failed to send goal: %s", e.what());
+        //     current_goal_handle_ = nullptr;
+        // }
+        // std::cout << "testing flow 3" << std::endl;
+
     }
 
     void goalManagerTimer_callback(){
@@ -497,6 +514,8 @@ private:
     SimpleGUI* gui_;
     std::unique_ptr<QApplication> app_;
     rclcpp::TimerBase::SharedPtr timer_;
+
+    rclcpp_action::Client<NavigateToPose>::GoalHandle::SharedPtr current_goal_handle_;
 };
 
 
