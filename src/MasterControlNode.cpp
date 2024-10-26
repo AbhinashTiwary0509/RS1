@@ -14,10 +14,33 @@ using namespace std::chrono_literals;
 using NavigateToPose = nav2_msgs::action::NavigateToPose;
 using GoalHandleNavigateToPose = rclcpp_action::ClientGoalHandle<NavigateToPose>;
 
+enum robotStatus{
+    WAITING = 0,
+    INPUT_TARGET,
+    OUTPUT_TARGET,
+    WAITING_WITH_OBJECT,
+    OTHER_R,
+};
+
+enum goalType{
+    INPUT_GOAL = 0,
+    OUTPUT_GOAL,
+    OTHER,
+};
+
 struct goalStruct {
     double xPos = 0;
     double yPos = 0;
     double yaw = 0; //yaw of the goal
+    goalType type = OTHER;
+};
+
+struct ObjectStruct {
+    double xPos = 0;
+    double yPos = 0 ;
+    int ID = 0;
+    bool targeted = false;
+    bool stored = false;
 };
 
 struct quartRotXYZW {
@@ -27,13 +50,108 @@ struct quartRotXYZW {
     double w = 0;
 };
 
+struct storagePosition{
+    goalStruct position;
+    bool empty = true;
+};
+
+class ObjectStorage {
+public:
+    ObjectStorage(){
+        //where the objects are at the start of the run
+        //example inout area object
+        createObject(0, 1.1, 2);
+
+        //create all of the valid storage positions
+        addStoragePosition(1.6, -0.8, 0);
+    }
+
+    void createObject(int ID, double xPos, double yPos){
+        ObjectStruct newObject;
+        newObject.xPos = xPos;
+        newObject.yPos = yPos;
+        newObject.ID = ID;
+
+        //append to the list of objects in input zone
+        objects_.push_back(newObject);
+    }
+
+    void targetObject(int ID, bool toggle){ //toggle = true: make targetted. = false: untarget
+        int indexTarget = -1; //default
+        for(size_t i = 0; i < objects_.size(); i++){
+            if(objects_.at(i).ID == ID){
+                indexTarget = i;
+            }
+        }
+
+        if(indexTarget == -1){
+            std::cout << "ERR_ storage object ID not found" << std::endl;
+        }else{
+            if(toggle){ //target
+                objects_.at(indexTarget).targeted = true;
+            }else{//untarget
+                objects_.at(indexTarget).targeted = false;
+            }
+        }
+    }
+
+    bool generateGoalForObjectPickup(goalStruct &goal){ //true if there is a goal false otherwise, will pass the goal by reference
+        int indexTarget = -1;
+        for(size_t i = 0; i < objects_.size(); i++){
+            if(objects_.at(i).stored == false && objects_.at(i).targeted == false){
+                indexTarget = i;
+            }
+        }
+        if(indexTarget == -1){
+            std::cout << "No object to target" << std::endl;
+            return false;
+        }else{
+            goal.xPos = objects_.at(indexTarget).xPos;
+            goal.yPos = objects_.at(indexTarget).yPos;
+            goal.type = INPUT_GOAL;
+            goal.yaw = 0; //default yaw for target is 0 change later to fit input area
+            objects_.at(indexTarget).targeted = true;
+            return true;
+        }
+        std::cout << "" << std::endl;
+        return false; //default
+    }
+
+    goalStruct getAvailableStoragePosition(){
+        for(size_t i = 0; i< storagePositions_.size(); i++){
+            if(storagePositions_.at(i).empty = true){
+                storagePositions_.at(i).empty = false; //if this function is called to get this position it is automatically considered full
+                return storagePositions_.at(i).position;
+            }
+        }
+    }
+
+private:
+    void addStoragePosition(double xPos, double yPos, double yaw){
+        goalStruct newGoal;
+        newGoal.xPos = xPos;
+        newGoal.yPos = yPos;
+        newGoal.yaw = yaw;
+
+        storagePosition newStoragePosition;
+        newStoragePosition.position = newGoal;
+        newStoragePosition.empty = true;
+
+        //add to storage positions
+        storagePositions_.push_back(newStoragePosition);
+    }
+
+    std::vector<ObjectStruct> objects_;
+    std::vector<storagePosition> storagePositions_;
+};
+
 class robot {
 public:
     robot(){
         std::cout << "Intialised robot" << std::endl;
 
         //initialise default values for the robot
-        busy_ = false;
+        status_ = WAITING;
 
         goalStruct defaultGoal;
         defaultGoal.xPos = 0;
@@ -41,11 +159,13 @@ public:
         defaultGoal.yaw = 0;
         currentGoal_ = defaultGoal;
 
-        ID_ = 0;
+        robotID_ = 0;
+
+        heldObjectID_ = NULL;
     }
 
-    bool getAvailability(){
-        return busy_;
+    int getStatus(){
+        return status_;
     }
     
     goalStruct getCurrentGoal(){
@@ -53,26 +173,41 @@ public:
     }
 
     void setRobotID(int ID){
-        ID_ = ID;
+        robotID_ = ID;
     }
 
     int getRobotID(){
-        return ID_;
+        return robotID_;
     }
 
-    void setGoal(goalStruct goal){
+    void setGoal(goalStruct goal){ //inputOutput true for input area goal, false for storage goal
         currentGoal_ = goal;
-        busy_ = true;
+        if(goal.type ==INPUT_GOAL){
+            status_ = INPUT_TARGET;
+        }else if(goal.type == OUTPUT_TARGET){
+            status_ = OUTPUT_TARGET;
+        }else{
+            status_ = OTHER_R;
+        }
     }
 
     void flagGoalAsAchieved(){
-        busy_ = false;
+        status_ = WAITING;
+    }
+
+    void pickupDropoffObjectToggle(bool pickupDropoff, int ID){ //true for object being picked up false otherwise
+        if(pickupDropoff){
+            heldObjectID_ = ID;
+        }else{
+            heldObjectID_= NULL;
+        }
     }
 
 private:
-    bool busy_;
+    robotStatus status_; // 0 = waiting 1 = heading to input area, 2 = heading to store object 
     goalStruct currentGoal_;
-    int ID_;
+    int robotID_;
+    int heldObjectID_;
 };
  
 class MasterControlNode : public rclcpp::Node {
@@ -103,32 +238,19 @@ MasterControlNode() : Node("MasterControlNode"){
 
     std::this_thread::sleep_for(std::chrono::seconds(2));
 
-    goalAssignerTimer_ = this->create_wall_timer(1000ms, std::bind(&MasterControlNode::goalAssignerTimer_callback, this)); //timer runs every second and decides if goals should be assigned
-
-    addGoalToQueue(0, 10, -2);
-    addGoalToQueue(0, 1.1, 2);
-    addGoalToQueue(0, 1, -2);
-    addGoalToQueue(0, -2, 7);
-
-    goalTargetted_ = false;
-    currentGoalIndex_ = 0;
+    goalAssignerTimer_ = this->create_wall_timer(1000ms, std::bind(&MasterControlNode::goalManagerTimer_callback, this)); //timer runs every second and decides if goals should be assigned
 
     //intialise robot
     robot robotInstance;
     robotInstance.setRobotID(0);
     robots_.push_back(robotInstance);
-
     targetRobotID_ = 0;
+
+    //initialise object storage
+    storage_ = ObjectStorage();
   }
 
 private:
-    void addGoalToQueue(double xPos, double yPos, double yaw){
-        goalStruct newGoal;
-        newGoal.xPos = xPos;
-        newGoal.yPos = yPos;
-        newGoal.yaw = yaw;
-        goalQueue_.push_back(newGoal);
-    }
 
     quartRotXYZW yawToXYZW(double yaw){
         quartRotXYZW ret;
@@ -139,7 +261,6 @@ private:
     }
 
     void sendGoal(goalStruct goal){
-        goalTargetted_ = true;
         // Create a goal message with a target pose
         auto goal_msg = NavigateToPose::Goal();
         goal_msg.pose.header.frame_id = "map";  // Use 'map' as the reference frame
@@ -160,10 +281,8 @@ private:
         {
             if (result.code == rclcpp_action::ResultCode::SUCCEEDED)
             {
-                RCLCPP_INFO(this->get_logger(), "Goal succeeded!");
+                RCLCPP_INFO(this->get_logger(), "Goal COMPLETE");
                 robots_.at(targetRobotID_).flagGoalAsAchieved();
-                goalTargetted_ = false;
-                currentGoalIndex_ += 1;
             }
             else
             {
@@ -174,14 +293,42 @@ private:
         client_ptr_NAV2POSE->async_send_goal(goal_msg, send_goal_options);
     }
 
-    void goalAssignerTimer_callback(){
+    void goalManagerTimer_callback(){
         //add logic for choosing robot ID for given tasks
         targetRobotID_ = 0;
 
-        if(!goalTargetted_ && currentGoalIndex_ < goalQueue_.size()){
-            std::cout << "Sending new Goal" << std::endl;
-            sendGoal(goalQueue_.at(currentGoalIndex_));
-            robots_.at(targetRobotID_).setGoal(goalQueue_.at(currentGoalIndex_));
+        goalStruct newManagerGoal;
+        bool availableObject = false;
+        
+        switch (robots_.at(targetRobotID_).getStatus())
+        {
+        case WAITING:
+            //send to input area box to pickup
+            availableObject = storage_.generateGoalForObjectPickup(newManagerGoal);
+            if(!availableObject){
+                std::cout << "Robot waiting, no objects to move" << std::endl;
+                return; //nothing to do so return
+            }else{
+                //send goal
+                sendGoal(newManagerGoal);
+                robots_.at(targetRobotID_).setGoal(newManagerGoal);
+            }
+            break;
+
+        case INPUT_TARGET:
+            return; //skip entire function robot already heading to goal
+            break;
+
+        case OUTPUT_TARGET:
+            return; //skip entire function robot already heading to goal
+            break;
+
+        case WAITING_WITH_OBJECT:
+            /* code */
+            break;
+        
+        default:
+            break;
         }
     }
 
@@ -213,18 +360,22 @@ private:
  
 private:
     rclcpp_action::Client<NavigateToPose>::SharedPtr client_ptr_NAV2POSE;
-    bool goalTargetted_;
+    
     rclcpp::TimerBase::SharedPtr goalAssignerTimer_;
-    std::vector<goalStruct> goalQueue_;
-    int currentGoalIndex_;
+    goalStruct currentGoal;
+    
     std::vector<robot> robots_;
+    
     int targetRobotID_;
+
     rclcpp::Publisher<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr initial_pose_publisher_;
+
+    //object storage class instance
+    ObjectStorage storage_;
 
     double programStartXPos_;
     double programStartYPos_;
     double programStartYaw_;
-
 };
 
 
