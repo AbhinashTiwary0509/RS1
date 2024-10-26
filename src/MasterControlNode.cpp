@@ -11,6 +11,10 @@
 #include "SimpleGUI.hpp"
 #include <QApplication>
 
+//halfway through reworking nullify and goal management
+//goal is nullified when aborted cancelled or completed
+//new goal replaces in with a new timer, by pulling it from the queue so that the main can be used to cancel live
+
 
 using std::placeholders::_1;
 using namespace std::chrono_literals;
@@ -37,6 +41,22 @@ struct goalStruct {
     double yPos = 0;
     double yaw = 0; //yaw of the goal
     goalType type = OTHER;
+    bool nullified = false;
+
+    bool operator==(const goalStruct& other) const {
+    return (xPos == other.xPos) &&
+            (yPos == other.yPos) &&
+            (yaw == other.yaw) &&
+            (type == other.type);
+    }
+
+    void nullify() {
+        xPos = 0;
+        yPos = 0;
+        yaw = 0;
+        type = OTHER; // Assuming you want to reset type to OTHER as well
+        nullified = true;
+    }
 };
 
 struct ObjectStruct {
@@ -245,7 +265,7 @@ public:
         currentGoal_ = goal;
         if(goal.type ==INPUT_GOAL){
             status_ = INPUT_TARGET;
-        }else if(goal.type == OUTPUT_TARGET){
+        }else if(goal.type == OUTPUT_GOAL){
             status_ = OUTPUT_TARGET;
         }else{
             status_ = OTHER_R;
@@ -291,13 +311,13 @@ MasterControlNode() : Node("MasterControlNode"){
     // Initialize GUI
     // std::this_thread::sleep_for(std::chrono::seconds(2));
     // init_gui();
-    
-
     //testing###############
 
     programStartXPos_ = 0;
     programStartYPos_ = 0;
     programStartYaw_ = 0;
+    currentGoalSent_ = false;
+    testingCount_ = 0;
 
     // Initialize the action client
     client_ptr_NAV2POSE = rclcpp_action::create_client<NavigateToPose>(this, "navigate_to_pose");
@@ -318,7 +338,11 @@ MasterControlNode() : Node("MasterControlNode"){
 
     std::this_thread::sleep_for(std::chrono::seconds(2));
 
+    //timer used to assign the current goal
     goalAssignerTimer_ = this->create_wall_timer(1000ms, std::bind(&MasterControlNode::goalManagerTimer_callback, this)); //timer runs every second and decides if goals should be assigned
+
+    //timer used to call the blocking service call
+    serviceManagerTimer_ = this->create_wall_timer(1000ms, std::bind(&MasterControlNode::serviceManagerTimer_callback, this));
 
     //intialise robot
     robot robotInstance;
@@ -374,40 +398,86 @@ private:
         goal_msg.pose.pose.orientation.z = contXYZW.z;
         goal_msg.pose.pose.orientation.w = contXYZW.w;
 
-        // Send the goal to the server
         auto send_goal_options = rclcpp_action::Client<NavigateToPose>::SendGoalOptions();
-        send_goal_options.result_callback = [this](const GoalHandleNavigateToPose::WrappedResult & result)
-        {
-            if (result.code == rclcpp_action::ResultCode::SUCCEEDED)
-            {
-                RCLCPP_INFO(this->get_logger(), "Goal COMPLETE");
-                robots_.at(targetRobotID_).flagGoalAsAchieved();
-            }
-            else
-            {
-                RCLCPP_ERROR(this->get_logger(), "Goal failed with result code: %d", result.code);
-            }
-        };
 
-        // Store the current goal handle using shared_future
-        // auto future_handle = client_ptr_NAV2POSE->async_send_goal(goal_msg, send_goal_options);
+        // Add a goal response callback to store the handle
+        send_goal_options.goal_response_callback =
+            [this](const GoalHandleNavigateToPose::SharedPtr & goal_handle) {
+                if (!goal_handle) {
+                    RCLCPP_ERROR(this->get_logger(), "Goal was rejected by server");
+                } else {
+                    RCLCPP_INFO(this->get_logger(), "Goal accepted by server");
+                    this->current_goal_handle_ = goal_handle;
+                }
+            };
+
+        // Send the goal to the server
+        send_goal_options.result_callback =
+            [this](const GoalHandleNavigateToPose::WrappedResult & result) {
+                switch (result.code) {
+                    case rclcpp_action::ResultCode::SUCCEEDED:
+                        RCLCPP_INFO(this->get_logger(), "Goal COMPLETE");
+                        robots_.at(targetRobotID_).flagGoalAsAchieved();
+                        currentGoal_.nullify();
+                        this->current_goal_handle_ = nullptr;  // Clear the handle
+                        break;
+                    case rclcpp_action::ResultCode::ABORTED:
+                        RCLCPP_INFO(this->get_logger(), "Goal was aborted");
+                        currentGoal_.nullify();
+                        this->current_goal_handle_ = nullptr;  // Clear the handle
+                        break;
+                    case rclcpp_action::ResultCode::CANCELED:
+                        RCLCPP_INFO(this->get_logger(), "Goal was canceled");
+                        currentGoal_.nullify();
+                        this->current_goal_handle_ = nullptr;  // Clear the handle
+                        break;
+                    default:
+                        RCLCPP_ERROR(this->get_logger(), "Unknown result code");
+                        this->current_goal_handle_ = nullptr;  // Clear the handle
+                        break;
+                }
+            };
+
         client_ptr_NAV2POSE->async_send_goal(goal_msg, send_goal_options);
-        // std::cout << "testing flow 1" << std::endl;
-
-
-        // Wait for the future to be ready and get the goal handle
-        // try {
-        //     std::cout << "testing flow 2" << std::endl;
-        //     current_goal_handle_ = future_handle.get();  // Get the GoalHandle
-        //     std::cout << "testing flow 2.5" << std::endl;
-        // } catch (const std::exception &e) {
-        //     std::cout << "testing flow 2.8" << std::endl;
-        //     RCLCPP_ERROR(this->get_logger(), "Failed to send goal: %s", e.what());
-        //     current_goal_handle_ = nullptr;
-        // }
-        // std::cout << "testing flow 3" << std::endl;
-
     }
+
+    void cancelCurrentGoal() {
+        if (current_goal_handle_ != nullptr) {
+            RCLCPP_INFO(this->get_logger(), "Canceling current goal");
+            
+            // Create a callback for the cancel response
+            auto cancel_response_callback = [this](std::shared_ptr<action_msgs::srv::CancelGoal_Response> response) {
+                if (response->return_code == action_msgs::srv::CancelGoal_Response::ERROR_NONE) {
+                    RCLCPP_INFO(this->get_logger(), "Goal successfully canceled");
+                } else {
+                    RCLCPP_ERROR(this->get_logger(), "Failed to cancel goal");
+                }
+            };
+
+            // Send the cancel request asynchronously
+            client_ptr_NAV2POSE->async_cancel_goal(current_goal_handle_, cancel_response_callback);
+            
+        } else {
+            RCLCPP_WARN(this->get_logger(), "No active goal to cancel");
+        }
+    }
+
+    void serviceManagerTimer_callback(){
+        testingCount_ ++;
+        //if the goal is not nullified
+        if(currentGoal_.nullified == false && currentGoalSent_ == false){
+            //we can send the current goal
+            currentGoalSent_ = true;
+            sendGoal(currentGoal_);
+        }else{
+            std::cout << "Service manager -> no new messages to send" << std::endl;
+            if(testingCount_ > 30){
+                std::cout << "Testing cancel current goal" << std::endl;
+                cancelCurrentGoal();
+            }
+        }
+    }
+    
 
     void goalManagerTimer_callback(){
         //add logic for choosing robot ID for given tasks
@@ -430,7 +500,7 @@ private:
                 //send goal
                 std::cout << "Sending Goal - PICKUP object" << std::endl;
                 robots_.at(targetRobotID_).setGoal(newManagerGoal);
-                sendGoal(newManagerGoal);
+                queueGoal(newManagerGoal);
                 robots_.at(targetRobotID_).pickupDropoffObjectToggle(true, objID);
                 robots_.at(targetRobotID_).setGoal(newManagerGoal);
             }
@@ -452,12 +522,10 @@ private:
             }else{
                 std::cout << "Sending Goal - STORE object" << std::endl;
                 robots_.at(targetRobotID_).setGoal(newManagerGoal);
-                sendGoal(newManagerGoal);
+                queueGoal(newManagerGoal);
                 robots_.at(targetRobotID_).pickupDropoffObjectToggle(false);
                 robots_.at(targetRobotID_).setGoal(newManagerGoal);
             }
-            
-            /* code */
             break;
         
         default:
@@ -491,11 +559,24 @@ private:
         RCLCPP_INFO(this->get_logger(), "Published initial pose estimate");
     }
  
+    bool queueGoal(goalStruct newGoal){ //can only Queue one goal at a time
+        if(newGoal == currentGoal_){
+            std::cout << "new goal is EQUAL to current goal ignoring" << std::endl;
+            return false;
+        }else{
+            currentGoalSent_ = false;
+            currentGoal_ = newGoal;
+        }
+        return true;
+    }
+
 private:
     rclcpp_action::Client<NavigateToPose>::SharedPtr client_ptr_NAV2POSE;
     
     rclcpp::TimerBase::SharedPtr goalAssignerTimer_;
-    goalStruct currentGoal;
+    rclcpp::TimerBase::SharedPtr serviceManagerTimer_;
+    goalStruct currentGoal_;
+    bool currentGoalSent_;
     
     std::vector<robot> robots_;
     
@@ -515,7 +596,10 @@ private:
     std::unique_ptr<QApplication> app_;
     rclcpp::TimerBase::SharedPtr timer_;
 
-    rclcpp_action::Client<NavigateToPose>::GoalHandle::SharedPtr current_goal_handle_;
+    using GoalHandleNavigateToPose = rclcpp_action::ClientGoalHandle<NavigateToPose>;
+    GoalHandleNavigateToPose::SharedPtr current_goal_handle_;
+
+    int testingCount_;
 };
 
 
