@@ -8,6 +8,10 @@
 #include <cmath> 
 #include <iostream>
 
+#include "SimpleGUI.hpp"
+#include <QApplication>
+
+
 using std::placeholders::_1;
 using namespace std::chrono_literals;
 
@@ -63,11 +67,55 @@ public:
         createObject(0, 1.6, -0.8);
         createObject(1, 1, -0.8);
         createObject(2, 0.4, -0.8);
+        createObject(0, 1.6, -0.8);
+        createObject(1, 1, -0.8);
+        createObject(2, 0.4, -0.8);
+        createObject(0, 1.6, -0.8);
+        createObject(1, 1, -0.8);
+        createObject(2, 0.4, -0.8);
+        createObject(0, 1.6, -0.8);
+        createObject(1, 1, -0.8);
+        createObject(2, 0.4, -0.8);
+        createObject(0, 1.6, -0.8);
+        createObject(1, 1, -0.8);
+        createObject(2, 0.4, -0.8);
+        createObject(0, 1.6, -0.8);
+        createObject(1, 1, -0.8);
+        createObject(2, 0.4, -0.8);
 
         //create all of the valid storage positions
-        addStoragePosition(1.5, 1.4, 0);
-        addStoragePosition(1.5, 2.1, 0);
-        addStoragePosition(1.5, 2.8, 0);
+        addStoragePosition(1.6, 1.4, deg2rad(180));
+        addStoragePosition(1.6, 2.1, deg2rad(180));
+        addStoragePosition(1.6, 3, deg2rad(180));
+        addStoragePosition(1.6, 4, deg2rad(180));
+        addStoragePosition(1.6, 6.4, deg2rad(180));
+        addStoragePosition(1.6, 7.1, deg2rad(180));
+        addStoragePosition(1.6, 7.8, deg2rad(180));
+        addStoragePosition(1.6, 9, deg2rad(180));
+        addStoragePosition(0.45, 1.4, 0);
+        addStoragePosition(0.45, 2.1, 0);
+        addStoragePosition(0.45, 3, 0);
+        addStoragePosition(0.45, 4, 0);
+        addStoragePosition(0.45, 6.4, 0);
+        addStoragePosition(0.45, 7.1, 0);
+        addStoragePosition(0.45, 7.8, 0);
+        addStoragePosition(0.45, 9, 0);
+        addStoragePosition(-0.45, 1.4, deg2rad(180));
+        addStoragePosition(-0.45, 2.1, deg2rad(180));
+        addStoragePosition(-0.45, 3, deg2rad(180));
+        addStoragePosition(-0.45, 4, deg2rad(180));
+        addStoragePosition(-0.45, 6.4, deg2rad(180));
+        addStoragePosition(-0.45, 7.1, deg2rad(180));
+        addStoragePosition(-0.45, 7.8, deg2rad(180));
+        addStoragePosition(-0.45, 9, deg2rad(180));
+        addStoragePosition(-1.8, 1.4, 0);
+        addStoragePosition(-1.8, 2.1, 0);
+        addStoragePosition(-1.8, 3, 0);
+        addStoragePosition(-1.8, 4, 0);
+        addStoragePosition(-1.8, 6.4, 0);
+        addStoragePosition(-1.8, 7.1, 0);
+        addStoragePosition(-1.8, 7.8, 0);
+        addStoragePosition(-1.8, 9, 0);
     }
 
     void createObject(int ID, double xPos, double yPos){
@@ -135,6 +183,10 @@ public:
     }
 
 private:
+    double deg2rad(double deg){
+        return deg * M_PI / 180.0;
+    }
+
     void addStoragePosition(double xPos, double yPos, double yaw){
         goalStruct newGoal;
         newGoal.xPos = xPos;
@@ -235,42 +287,69 @@ public:
 MasterControlNode() : Node("MasterControlNode"){    
     std::cout << "MasterControlNode started" << std::endl;
 
-    programStartXPos_ = 0;
-    programStartYPos_ = 0;
-    programStartYaw_ = 0;
-
-    // Initialize the action client
-    client_ptr_NAV2POSE = rclcpp_action::create_client<NavigateToPose>(this, "navigate_to_pose");
-
-    // Wait until the action server is available
-    while (!client_ptr_NAV2POSE->wait_for_action_server(std::chrono::seconds(5))){
-            RCLCPP_INFO(this->get_logger(), "Waiting for the action server to be available...");
-    }
-
-    //instial pose publisher
-    initial_pose_publisher_ = this->create_publisher<geometry_msgs::msg::PoseWithCovarianceStamped>("initialpose", 10);
-    publish_initial_pose();
-
-    for(int i = 0; i < 10; i++){
-        publish_initial_pose();
-        std::this_thread::sleep_for(std::chrono::milliseconds(500));
-    }
-
+    //testing########################
+    // Initialize GUI
     std::this_thread::sleep_for(std::chrono::seconds(2));
+    init_gui();
+    
 
-    goalAssignerTimer_ = this->create_wall_timer(1000ms, std::bind(&MasterControlNode::goalManagerTimer_callback, this)); //timer runs every second and decides if goals should be assigned
+    //testing###############
 
-    //intialise robot
-    robot robotInstance;
-    robotInstance.setRobotID(0);
-    robots_.push_back(robotInstance);
-    targetRobotID_ = 0;
+    // programStartXPos_ = 0;
+    // programStartYPos_ = 0;
+    // programStartYaw_ = 0;
 
-    //initialise object storage
-    storage_ = ObjectStorage();
+    // // Initialize the action client
+    // client_ptr_NAV2POSE = rclcpp_action::create_client<NavigateToPose>(this, "navigate_to_pose");
+
+    // // Wait until the action server is available
+    // while (!client_ptr_NAV2POSE->wait_for_action_server(std::chrono::seconds(5))){
+    //         RCLCPP_INFO(this->get_logger(), "Waiting for the action server to be available...");
+    // }
+
+    // //instial pose publisher
+    // initial_pose_publisher_ = this->create_publisher<geometry_msgs::msg::PoseWithCovarianceStamped>("initialpose", 10);
+    // publish_initial_pose();
+
+    // for(int i = 0; i < 10; i++){
+    //     publish_initial_pose();
+    //     std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    // }
+
+    // std::this_thread::sleep_for(std::chrono::seconds(2));
+
+    // goalAssignerTimer_ = this->create_wall_timer(1000ms, std::bind(&MasterControlNode::goalManagerTimer_callback, this)); //timer runs every second and decides if goals should be assigned
+
+    // //intialise robot
+    // robot robotInstance;
+    // robotInstance.setRobotID(0);
+    // robots_.push_back(robotInstance);
+    // targetRobotID_ = 0;
+
+    // //initialise object storage
+    // storage_ = ObjectStorage();
   }
 
 private:
+
+    void init_gui(){
+        // Initialize GUI
+        static int argc = 0;
+        static char** argv = nullptr;
+        app_ = std::make_unique<QApplication>(argc, argv);
+        
+        // Create GUI with properly constructed shared_ptr
+        auto node_ptr = std::shared_ptr<MasterControlNode>(this, [](MasterControlNode*){});
+        gui_ = new SimpleGUI(node_ptr);
+        gui_->show();
+        
+        // Start Qt event loop
+        timer_ = this->create_wall_timer(
+            std::chrono::milliseconds(10),
+            [this]() {
+                app_->processEvents();
+            });
+    }
 
     quartRotXYZW yawToXYZW(double yaw){
         quartRotXYZW ret;
@@ -413,6 +492,11 @@ private:
     double programStartXPos_;
     double programStartYPos_;
     double programStartYaw_;
+
+    //gui stuff
+    SimpleGUI* gui_;
+    std::unique_ptr<QApplication> app_;
+    rclcpp::TimerBase::SharedPtr timer_;
 };
 
 

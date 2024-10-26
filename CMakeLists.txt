@@ -17,8 +17,26 @@ find_package(nav_msgs REQUIRED)
 find_package(nav2_msgs REQUIRED)
 find_package(rclcpp_action REQUIRED)
 
-add_executable(MasterControlNodeExe src/MasterControlNode.cpp)
+# Add Qt dependencies
+find_package(Qt5 COMPONENTS Widgets REQUIRED)
+
+# Enable automoc for Qt
+set(CMAKE_AUTOMOC ON)
+set(CMAKE_AUTORCC ON)
+set(CMAKE_AUTOUIC ON)
+
+
+add_executable(MasterControlNodeExe src/MasterControlNode.cpp src/SimpleGUI.cpp)
+
+target_include_directories(MasterControlNodeExe PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+
 ament_target_dependencies(MasterControlNodeExe rclcpp std_msgs sensor_msgs nav_msgs rclcpp_action nav2_msgs)
+
+target_link_libraries(MasterControlNodeExe
+    Qt5::Widgets
+)
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
