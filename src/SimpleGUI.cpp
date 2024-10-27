@@ -17,9 +17,9 @@ SimpleGUI::SimpleGUI(rclcpp::Node::SharedPtr node, QWidget *parent)
     layout->setContentsMargins(10, 10, 10, 10);  // Add margins around the edges
     
     // Create buttons with minimum size
-    button1 = new QPushButton("Button 1", centralWidget);
-    button2 = new QPushButton("Button 2", centralWidget);
-    button3 = new QPushButton("Button 3", centralWidget);
+    button1 = new QPushButton("Add Item", centralWidget);
+    button2 = new QPushButton("Generate Live Report", centralWidget);
+    button3 = new QPushButton("Generate Daily Report", centralWidget);
     button4 = new QPushButton("Button 4", centralWidget);
 
     // Set minimum button size
@@ -47,19 +47,21 @@ SimpleGUI::SimpleGUI(rclcpp::Node::SharedPtr node, QWidget *parent)
 
 void SimpleGUI::onButton1Clicked()
 {
-    RCLCPP_INFO(node_->get_logger(), "Button 1 clicked!");
+    RCLCPP_INFO(node_->get_logger(), "Add Item to be stored!");
+    addItem = true;
     // Add your function call here
 }
 
 void SimpleGUI::onButton2Clicked()
 {
-    RCLCPP_INFO(node_->get_logger(), "Button 2 clicked!");
-    // Add your function call here
+    RCLCPP_INFO(node_->get_logger(), "Generating Live Report!");
+    generateLiveReport = true;
 }
 
 void SimpleGUI::onButton3Clicked()
 {
-    RCLCPP_INFO(node_->get_logger(), "Button 3 clicked!");
+    RCLCPP_INFO(node_->get_logger(), "Generating Daily Report!");
+    generateDailyReport = true;
     // Add your function call here
 }
 
