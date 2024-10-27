@@ -7,6 +7,7 @@
 #include <chrono>
 #include <cmath> 
 #include <iostream>
+#include <optional>
 
 #include "SimpleGUI.hpp"
 #include <QApplication>
@@ -95,6 +96,25 @@ struct storagePosition{
 }
 };
 
+struct robotData{
+    int numberOfGoalsAcheived = 0;
+    int numberOfObjectsMoved = 0;
+    robotStatus robStatus = WAITING;
+};
+
+struct storageReport{
+    int available = 0;
+    int full = 0;
+    int objectsS = 0;
+    int objectsUS = 0; 
+};
+
+struct dailyReportData{
+    int numberOfRobots = 0;
+    std::vector<robotData> robotDataVector;
+    storageReport storageDaily;
+};
+
 class ObjectStorage {
 public:
     ObjectStorage(){
@@ -146,22 +166,65 @@ public:
 
     }
 
-    void generatePDF(bool dailyOrLive){ //daily or live report
+    storageReport generateStorageData(){
+        storageReport ret;
+
+        //calculate data
+        for(size_t i = 0; i<storagePositions_.size(); i++){
+            if(storagePositions_.at(i).empty == true){
+                ret.available++;
+            }else{
+                ret.full++;
+            }
+        }
+
+        for(size_t i = 0; i<objects_.size(); i++){
+            if(objects_.at(i).stored == true){
+                ret.objectsS++;
+            }else{
+                ret.objectsUS++;
+            }
+        }
+
+        return ret;
+    }
+
+    void generatePDF(bool dailyOrLive, std::optional<dailyReportData> DRData = std::nullopt){ //daily or live report
         if(dailyOrLive){ //daily report
             try {
                 PDF_DAILY_.clear();     
-                //PLACEHOLDER UNTILL final daily report is done
-                std::string data1 = "Temperature: 25.5°C";
-                std::string data2 = "Humidity: 65%";
-                std::string data3 = "Pressure: 1013 hPa";
 
-                // Position text on the page (coordinates in points, origin at bottom-left)
-                PDF_DAILY_.addText(50, 750, "Sensor Data Report");
-                PDF_DAILY_.addText(50, 700, data1);
-                PDF_DAILY_.addText(50, 680, data2);
-                PDF_DAILY_.addText(50, 660, data3);
-    
-                PDF_DAILY_.save("DailyReport.pdf");
+                PDF_DAILY_.addText(50, 775, "DAILY REPORT");  //title
+
+                int textX= 60;
+                int textY = 750;
+                int textYinc = 15;
+                
+                PDF_DAILY_.addText(textX, textY, "Number of Robots: " + std::to_string(DRData->numberOfRobots));
+                textY -= textYinc;
+
+                for(size_t i = 0; i<DRData->robotDataVector.size(); i++){
+                    PDF_DAILY_.addText(textX, textY, "For Robot ID: " + std::to_string(i));
+                    textY -= textYinc;
+                    PDF_DAILY_.addText(textX, textY, "Current robot status: " + std::to_string(DRData->robotDataVector.at(i).robStatus));
+                    textY -= textYinc;
+                    PDF_DAILY_.addText(textX, textY, "Number of goals achieved: " + std::to_string(DRData->robotDataVector.at(i).numberOfGoalsAcheived));
+                    textY -= textYinc;
+                    PDF_DAILY_.addText(textX, textY, "Number objects moved: " + std::to_string(DRData->robotDataVector.at(i).numberOfObjectsMoved));
+                    textY -= textYinc;
+                }
+
+                PDF_DAILY_.addText(textX, textY, "Storage Data: ");
+                textY -= textYinc;
+                PDF_DAILY_.addText(textX, textY, "Available Storage Positions: " + std::to_string(DRData->storageDaily.available));
+                textY -= textYinc;
+                PDF_DAILY_.addText(textX, textY, "Full Storage Positions: " + std::to_string(DRData->storageDaily.full));
+                textY -= textYinc;
+                PDF_DAILY_.addText(textX, textY, "Objects Stored: " + std::to_string(DRData->storageDaily.objectsS));
+                textY -= textYinc;
+                PDF_DAILY_.addText(textX, textY, "Objects Unstored " + std::to_string(DRData->storageDaily.objectsUS));
+
+                PDF_DAILY_.save("DAILY_REPORT.pdf");
                 std::cout << "Daily Report PDF generated" << std::endl;
             }catch (const std::exception& e){
                 std::cerr << "Error: " << e.what() << std::endl;
@@ -307,6 +370,9 @@ public:
 
         heldObjectID_ = -1;
         objectHeld_ = false;
+
+        totalObjectsMoved_ = 0;
+        totalGoalsReached_ = 0;
     }
 
     int getStatus(){
@@ -344,6 +410,7 @@ public:
             status_ = WAITING;
             std::cout << "[ROBOT] status: WAITING" << std::endl;
         }
+        totalGoalsReached_++;
     }
 
     void pickupDropoffObjectToggle(bool pickupDropoff, int ID = -1){ //true for object being picked up false otherwise
@@ -351,6 +418,7 @@ public:
             objectHeld_ = true;
             std::cout << "[ROBOT] picking up object" << std::endl;
             heldObjectID_ = ID;
+            totalObjectsMoved_++;
         }else{
             objectHeld_ = false;
             std::cout << "[ROBOT] dropping off object" << std::endl;
@@ -358,12 +426,25 @@ public:
         }
     }
 
+    robotData getRobotData(){
+        robotData stat;
+        stat.numberOfGoalsAcheived = totalGoalsReached_;
+        stat.numberOfObjectsMoved = totalObjectsMoved_;
+        stat.robStatus = status_;
+        return stat;
+    }
+
 private:
-    robotStatus status_; // 0 = waiting 1 = heading to input area, 2 = heading to store object 
+    robotStatus status_;
     goalStruct currentGoal_;
     int robotID_;
     int heldObjectID_;
     bool objectHeld_;
+    
+    //record keeping
+    int totalObjectsMoved_;
+    int totalGoalsReached_;
+
 };
  
 class MasterControlNode : public rclcpp::Node {
@@ -609,8 +690,15 @@ private:
 
         else if (gui_->generateDailyReport == true) {
             std::cout << "[MASTER] regnise daily report command" << std::endl;
-            // do something
-            storage_.generatePDF(true);
+            //generate the data to pass
+            dailyReportData data;
+            data.numberOfRobots = robots_.size();
+            for(size_t i = 0; i<robots_.size(); i++){
+                data.robotDataVector.push_back(robots_.at(i).getRobotData());
+            }
+
+            data.storageDaily = storage_.generateStorageData();
+            storage_.generatePDF(true, data);
             gui_->generateDailyReport = false;
         }
     }
