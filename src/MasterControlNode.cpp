@@ -10,6 +10,7 @@
 
 #include "SimpleGUI.hpp"
 #include <QApplication>
+#include "PDFgenerator.cpp"
 
 //halfway through reworking nullify and goal management
 //goal is nullified when aborted cancelled or completed
@@ -61,10 +62,21 @@ struct goalStruct {
 
 struct ObjectStruct {
     double xPos = 0;
-    double yPos = 0 ;
+    double yPos = 0;
     int ID = 0;
     bool targeted = false;
     bool stored = false;
+
+    std::string toString() const {
+        std::stringstream ss;
+        ss << "Object at "
+           << " xPos: " << xPos
+           << ",  yPos: " << yPos
+           << ", with ID: " << ID 
+           << ", targeted: " << (targeted ? "true" : "false")
+           << ",  stored: " << (stored ? "true" : "false");
+        return ss.str();
+    }
 };
 
 struct quartRotXYZW {
@@ -136,6 +148,55 @@ public:
         addStoragePosition(-1.8, 7.1, 0);
         addStoragePosition(-1.8, 7.8, 0);
         addStoragePosition(-1.8, 9, 0);
+
+        //create instance of PDF generator
+        // PDF_DAILY_ = PDFGenerator("DAILY_REPORT.pdf");
+
+        // PDF_LIVE_ = PDFGenerator("LIVE_REPORT.pdf");
+        // generatePDF(false);//live call
+        // PDF_LIVE_.~PDFGenerator();
+    }
+
+    void generatePDF(bool dailyOrLive){ //daily or live report
+        if(dailyOrLive){ //daily report
+            try {          
+                // Add some sample data
+                std::string data1 = "Temperature: 25.5°C";
+                std::string data2 = "Humidity: 65%";
+                std::string data3 = "Pressure: 1013 hPa";
+
+                // Position text on the page (coordinates in points, origin at bottom-left)
+                PDF_DAILY_.addText(50, 750, "Sensor Data Report");
+                PDF_DAILY_.addText(50, 700, data1);
+                PDF_DAILY_.addText(50, 680, data2);
+                PDF_DAILY_.addText(50, 660, data3);
+    
+                PDF_DAILY_.save("DailyReport.pdf");
+                std::cout << "Daily Report PDF generated" << std::endl;
+            }catch (const std::exception& e){
+                std::cerr << "Error: " << e.what() << std::endl;
+            }
+        }else{ //live report
+            try {          
+                // Add some sample data
+                std::string tempString;
+                int textX= 50;
+                int textY = 750;
+                int textYinc = 50;
+                for(size_t i = 0; i < 5; i++){
+                    tempString = objects_.at(i).toString();
+                    std::cout << tempString << std::endl;
+                    PDF_LIVE_.addText(textX, textY, tempString);
+                    textY -= textYinc;
+                }
+
+                PDF_LIVE_.save("LIVE_REPORT.pdf");
+                std::cout << "LIVE_REPORT PDF generated" << std::endl;
+            }
+            catch (const std::exception& e) {
+                std::cerr << "Error generating LIVE_REPORT: " << e.what() << std::endl;
+            }
+        }
     }
 
     void createObject(int ID, double xPos, double yPos){
@@ -223,6 +284,8 @@ private:
 
     std::vector<ObjectStruct> objects_;
     std::vector<storagePosition> storagePositions_;
+    PDFGenerator PDF_DAILY_;
+    PDFGenerator PDF_LIVE_;
 };
 
 class robot {

@@ -25,17 +25,27 @@ set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 set(CMAKE_AUTOUIC ON)
 
+#PDF
+find_package(PkgConfig REQUIRED)
 
-add_executable(MasterControlNodeExe src/MasterControlNode.cpp src/SimpleGUI.cpp)
 
-target_include_directories(MasterControlNodeExe PRIVATE
+message(STATUS "LIBHARU_LIBRARIES: ${LIBHARU_LIBRARIES}")
+message(STATUS "LIBHARU_LIBRARY_DIRS: ${LIBHARU_LIBRARY_DIRS}")
+message(STATUS "LIBHARU_LDFLAGS: ${LIBHARU_LDFLAGS}")
+
+add_executable(MasterControlNodeExe src/MasterControlNode.cpp src/SimpleGUI.cpp src/PDFgenerator.cpp)
+
+target_include_directories(MasterControlNodeExe PUBLIC #was PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${LIBHARU_INCLUDE_DIRS} #added
 )
 
 ament_target_dependencies(MasterControlNodeExe rclcpp std_msgs sensor_msgs nav_msgs rclcpp_action nav2_msgs)
 
 target_link_libraries(MasterControlNodeExe
     Qt5::Widgets
+    ${LIBHARU_LIBRARIES}
+    -lhpdf
 )
 
 if(BUILD_TESTING)

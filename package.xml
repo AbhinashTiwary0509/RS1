@@ -18,6 +18,7 @@
   <depend>nav_msgs</depend>
   <depend>rclcpp_action</depend>
   <depend>nav2_msgs</depend>
+  <depend>libharu</depend>
 
   
   <test_depend>ament_lint_auto</test_depend>
