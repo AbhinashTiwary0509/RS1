@@ -1,6 +1,7 @@
 #include <hpdf.h>
 #include <string>
 #include <iostream>
+#include <filesystem>
 
 class PDFGenerator {
 private:
@@ -61,6 +62,14 @@ public:
         outputFilename = filename;
     }
 
+    void clear() {
+        if (pdf) {
+            HPDF_Free(pdf);
+            pdf = nullptr;
+        }
+        initialize();  // Reinitialize the PDF document
+    }
+
     void addText(float x, float y, const std::string& text) {
         if (!pdf || !page) {
             throw std::runtime_error("PDF not properly initialized");
@@ -72,12 +81,25 @@ public:
     }
 
     void save(const std::string& filename = "") {
+        deleteFile();
         if (!pdf) {
             throw std::runtime_error("PDF not properly initialized");
         }
 
         const std::string& fileToUse = filename.empty() ? outputFilename : filename;
         HPDF_SaveToFile(pdf, fileToUse.c_str());
+    }
+
+    bool deleteFile() {
+        try {
+            if (std::filesystem::exists(outputFilename)) {
+                return std::filesystem::remove(outputFilename);
+            }
+            return false;
+        } catch (const std::filesystem::filesystem_error& e) {
+            std::cerr << "Filesystem error: " << e.what() << std::endl;
+            return false;
+        }
     }
 
     ~PDFGenerator() {

@@ -138,17 +138,18 @@ public:
         addStoragePosition(-1.8, 7.8, 0);
         addStoragePosition(-1.8, 9, 0);
 
-        PDF_LIVE_.updateOutputFileName("DAILY.pdf");
-        generatePDF(false);//live call
+        PDF_LIVE_.updateOutputFileName("LIVE.pdf");
+        // generatePDF(false);//live call
 
         PDF_DAILY_.updateOutputFileName("DAILY.pdf");
-        generatePDF(true);//daily call
+        // generatePDF(true);//daily call
 
     }
 
     void generatePDF(bool dailyOrLive){ //daily or live report
         if(dailyOrLive){ //daily report
-            try {          
+            try {
+                PDF_DAILY_.clear();     
                 //PLACEHOLDER UNTILL final daily report is done
                 std::string data1 = "Temperature: 25.5°C";
                 std::string data2 = "Humidity: 65%";
@@ -167,6 +168,7 @@ public:
             }
         }else{ //live report
             try {
+                PDF_LIVE_.clear();     
                 // Add some sample data
                 std::string tempString;
                 int textX= 50;
@@ -237,6 +239,7 @@ public:
             std::cout << "No object to target" << std::endl;
             return false;
         }else{
+            objects_.at(indexTarget).stored = true;
             Obj_ID = objects_.at(indexTarget).ID;
             goal.xPos = objects_.at(indexTarget).xPos;
             goal.yPos = objects_.at(indexTarget).yPos;
@@ -593,18 +596,21 @@ private:
 
     void checkButtonClicked() {
         if (gui_->addItem == true) {
+            std::cout << "[MASTER] regnise addItem command" << std::endl;
             // do something
-            RCLCPP_INFO(this->get_logger(), "Add Item to be stored in master node!");
             gui_->addItem = false;
         }
 
         else if (gui_->generateLiveReport == true) {
-            // do something
+            std::cout << "[MASTER] regnise live report command" << std::endl;
+            storage_.generatePDF(false);
             gui_->generateLiveReport = false;
         }
 
         else if (gui_->generateDailyReport == true) {
+            std::cout << "[MASTER] regnise daily report command" << std::endl;
             // do something
+            storage_.generatePDF(true);
             gui_->generateDailyReport = false;
         }
     }
