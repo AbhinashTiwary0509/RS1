@@ -154,12 +154,14 @@ public:
 
         // PDF_LIVE_ = PDFGenerator("LIVE_REPORT.pdf");
         // generatePDF(false);//live call
-        // PDF_LIVE_.~PDFGenerator();
+        PDF_DAILY_ = PDFGenerator("DAILY.pdf");
+        generatePDF(true);//daily call
     }
 
     void generatePDF(bool dailyOrLive){ //daily or live report
         if(dailyOrLive){ //daily report
             try {          
+
                 // Add some sample data
                 std::string data1 = "Temperature: 25.5°C";
                 std::string data2 = "Humidity: 65%";
@@ -197,6 +199,7 @@ public:
                 std::cerr << "Error generating LIVE_REPORT: " << e.what() << std::endl;
             }
         }
+        std::cout << "Leaving generate PDF" << std::endl;
     }
 
     void createObject(int ID, double xPos, double yPos){
@@ -370,11 +373,14 @@ public:
 MasterControlNode() : Node("MasterControlNode"){    
     std::cout << "MasterControlNode started" << std::endl;
 
+    //initialise object storage
+    // storage_ = ObjectStorage();
+
     //testing########################
     // Initialize GUI
-    // std::this_thread::sleep_for(std::chrono::seconds(2));
     // init_gui();
-    //testing###############
+    // //testing###############
+
 
     programStartXPos_ = 0;
     programStartYPos_ = 0;
@@ -412,9 +418,6 @@ MasterControlNode() : Node("MasterControlNode"){
     robotInstance.setRobotID(0);
     robots_.push_back(robotInstance);
     targetRobotID_ = 0;
-
-    //initialise object storage
-    storage_ = ObjectStorage();
   }
 
 private:

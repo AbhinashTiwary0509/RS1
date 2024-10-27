@@ -16,9 +16,9 @@ public:
     }
 
     // Constructor with filename
-    PDFGenerator(const std::string& filename) : outputFilename(filename) {
-        initialize();
-    }
+    // PDFGenerator(const std::string& filename) : outputFilename(filename) {
+    //     initialize();
+    // }
 
 private:
     void initialize() {
@@ -40,6 +40,10 @@ private:
     }
 
 public:
+    void updateOutputFileName(const std::string& filename){
+        outputFilename = filename;
+    }
+
     void addText(float x, float y, const std::string& text) {
         HPDF_Page_BeginText(page);
         HPDF_Page_TextOut(page, x, y, text.c_str());
