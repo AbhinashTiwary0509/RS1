@@ -12,11 +12,6 @@
 #include <QApplication>
 #include "PDFgenerator.cpp"
 
-//halfway through reworking nullify and goal management
-//goal is nullified when aborted cancelled or completed
-//new goal replaces in with a new timer, by pulling it from the queue so that the main can be used to cancel live
-
-
 using std::placeholders::_1;
 using namespace std::chrono_literals;
 
@@ -89,6 +84,15 @@ struct quartRotXYZW {
 struct storagePosition{
     goalStruct position;
     bool empty = true;
+
+    std::string toString() const {
+    std::stringstream ss;
+    ss << "Storage Position at "
+        << " xPos: " << position.xPos
+        << ",  yPos: " << position.yPos
+        << ", empty: " << (empty ? "true" : "false");
+    return ss.str();
+}
 };
 
 class ObjectStorage {
@@ -99,22 +103,7 @@ public:
         createObject(0, 1.6, -0.8);
         createObject(1, 1, -0.8);
         createObject(2, 0.4, -0.8);
-        createObject(0, 1.6, -0.8);
-        createObject(1, 1, -0.8);
-        createObject(2, 0.4, -0.8);
-        createObject(0, 1.6, -0.8);
-        createObject(1, 1, -0.8);
-        createObject(2, 0.4, -0.8);
-        createObject(0, 1.6, -0.8);
-        createObject(1, 1, -0.8);
-        createObject(2, 0.4, -0.8);
-        createObject(0, 1.6, -0.8);
-        createObject(1, 1, -0.8);
-        createObject(2, 0.4, -0.8);
-        createObject(0, 1.6, -0.8);
-        createObject(1, 1, -0.8);
-        createObject(2, 0.4, -0.8);
-
+        
         //create all of the valid storage positions
         addStoragePosition(1.6, 1.4, deg2rad(180));
         addStoragePosition(1.6, 2.1, deg2rad(180));
@@ -149,20 +138,18 @@ public:
         addStoragePosition(-1.8, 7.8, 0);
         addStoragePosition(-1.8, 9, 0);
 
-        //create instance of PDF generator
-        // PDF_DAILY_ = PDFGenerator("DAILY_REPORT.pdf");
+        PDF_LIVE_.updateOutputFileName("DAILY.pdf");
+        generatePDF(false);//live call
 
-        // PDF_LIVE_ = PDFGenerator("LIVE_REPORT.pdf");
-        // generatePDF(false);//live call
-        PDF_DAILY_ = PDFGenerator("DAILY.pdf");
+        PDF_DAILY_.updateOutputFileName("DAILY.pdf");
         generatePDF(true);//daily call
+
     }
 
     void generatePDF(bool dailyOrLive){ //daily or live report
         if(dailyOrLive){ //daily report
             try {          
-
-                // Add some sample data
+                //PLACEHOLDER UNTILL final daily report is done
                 std::string data1 = "Temperature: 25.5°C";
                 std::string data2 = "Humidity: 65%";
                 std::string data3 = "Pressure: 1013 hPa";
@@ -179,14 +166,22 @@ public:
                 std::cerr << "Error: " << e.what() << std::endl;
             }
         }else{ //live report
-            try {          
+            try {
                 // Add some sample data
                 std::string tempString;
                 int textX= 50;
                 int textY = 750;
-                int textYinc = 50;
-                for(size_t i = 0; i < 5; i++){
+                int textYinc = 15;
+                PDF_LIVE_.addText(50, 775, "LIVE REPORT");  //title
+                for(size_t i = 0; i < objects_.size(); i++){
                     tempString = objects_.at(i).toString();
+                    std::cout << tempString << std::endl;
+                    PDF_LIVE_.addText(textX, textY, tempString);
+                    textY -= textYinc;
+                }
+
+                for(size_t i = 0; i < storagePositions_.size(); i++){
+                    tempString = storagePositions_.at(i).toString();
                     std::cout << tempString << std::endl;
                     PDF_LIVE_.addText(textX, textY, tempString);
                     textY -= textYinc;
@@ -374,11 +369,11 @@ MasterControlNode() : Node("MasterControlNode"){
     std::cout << "MasterControlNode started" << std::endl;
 
     //initialise object storage
-    // storage_ = ObjectStorage();
+    // storage_ = ObjectStorage();//dont think this is needed as it gets intialised anyway?
 
     //testing########################
     // Initialize GUI
-    // init_gui();
+    init_gui();
     // //testing###############
 
 
@@ -531,7 +526,6 @@ private:
     }
 
     void serviceManagerTimer_callback(){
-        testingCount_ ++;
         //if the goal is not nullified
         if(currentGoal_.nullified == false && currentGoalSent_ == false){
             //we can send the current goal
@@ -539,10 +533,6 @@ private:
             sendGoal(currentGoal_);
         }else{
             std::cout << "Service manager -> no new messages to send" << std::endl;
-            if(testingCount_ > 30){
-                std::cout << "Testing cancel current goal" << std::endl;
-                cancelCurrentGoal();
-            }
         }
     }
     
