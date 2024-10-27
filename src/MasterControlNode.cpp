@@ -413,6 +413,8 @@ MasterControlNode() : Node("MasterControlNode"){
     //timer used to call the blocking service call
     serviceManagerTimer_ = this->create_wall_timer(1000ms, std::bind(&MasterControlNode::serviceManagerTimer_callback, this));
 
+    checkButtonTimer = this->create_wall_timer(100ms, std::bind(&MasterControlNode::checkButtonClicked, this));
+
     //intialise robot
     robot robotInstance;
     robotInstance.setRobotID(0);
@@ -599,6 +601,24 @@ private:
         }
     }
 
+    void checkButtonClicked() {
+        if (gui_->addItem == true) {
+            // do something
+            RCLCPP_INFO(this->get_logger(), "Add Item to be stored in master node!");
+            gui_->addItem = false;
+        }
+
+        else if (gui_->generateLiveReport == true) {
+            // do something
+            gui_->generateLiveReport = false;
+        }
+
+        else if (gui_->generateDailyReport == true) {
+            // do something
+            gui_->generateDailyReport = false;
+        }
+    }
+
     void publish_initial_pose() {
         geometry_msgs::msg::PoseWithCovarianceStamped pose_msg;
         pose_msg.header.frame_id = "map";  // Frame of reference
@@ -641,6 +661,8 @@ private:
     
     rclcpp::TimerBase::SharedPtr goalAssignerTimer_;
     rclcpp::TimerBase::SharedPtr serviceManagerTimer_;
+    rclcpp::TimerBase::SharedPtr checkButtonTimer;
+
     goalStruct currentGoal_;
     bool currentGoalSent_;
     
