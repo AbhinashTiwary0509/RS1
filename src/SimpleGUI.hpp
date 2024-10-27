@@ -15,6 +15,10 @@ public:
     SimpleGUI(rclcpp::Node::SharedPtr node, QWidget *parent = nullptr);
     ~SimpleGUI() = default;
 
+    bool addItem = false;
+    bool generateLiveReport = false;
+    bool generateDailyReport = false;
+
 private slots:
     void onButton1Clicked();
     void onButton2Clicked();
@@ -29,6 +33,8 @@ private:
     QPushButton *button4;
     QWidget *centralWidget;
     QVBoxLayout *layout;
+
+    
 };
 
 #endif
