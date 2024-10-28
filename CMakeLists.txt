@@ -16,6 +16,11 @@ find_package(OpenCV REQUIRED)
 find_package(nav_msgs REQUIRED)
 find_package(nav2_msgs REQUIRED)
 find_package(rclcpp_action REQUIRED)
+find_package(yaml-cpp REQUIRED)
+find_package(OpenCV REQUIRED)
+
+include_directories(${OpenCV_INCLUDE_DIRS})
+
 
 # Add Qt dependencies
 find_package(Qt5 COMPONENTS Widgets REQUIRED)
@@ -27,7 +32,6 @@ set(CMAKE_AUTOUIC ON)
 
 #PDF
 find_package(PkgConfig REQUIRED)
-
 
 message(STATUS "LIBHARU_LIBRARIES: ${LIBHARU_LIBRARIES}")
 message(STATUS "LIBHARU_LIBRARY_DIRS: ${LIBHARU_LIBRARY_DIRS}")
@@ -48,6 +52,11 @@ target_link_libraries(MasterControlNodeExe
     -lhpdf
 )
 
+
+add_executable(CylinderDetectionExe src/CylinderDetection.cpp)
+ament_target_dependencies(CylinderDetectionExe rclcpp std_msgs geometry_msgs nav_msgs sensor_msgs)
+target_link_libraries(CylinderDetectionExe yaml-cpp ${OpenCV_LIBS})
+
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
   # the following line skips the linter which checks for copyrights
@@ -64,10 +73,11 @@ endif()
 # ament_target_dependencies(minimal_opencv_ros2_node rclcpp std_msgs sensor_msgs cv_bridge image_transport OpenCV)
 install(TARGETS
     MasterControlNodeExe
+    CylinderDetectionExe
     DESTINATION lib/${PROJECT_NAME}
  )
 
- install(DIRECTORY launch models worlds urdf
+ install(DIRECTORY launch models worlds urdf map
   DESTINATION share/${PROJECT_NAME}/
 )
  

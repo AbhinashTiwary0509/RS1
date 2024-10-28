@@ -616,10 +616,9 @@ private:
             currentGoalSent_ = true;
             sendGoal(currentGoal_);
         }else{
-            std::cout << "Service manager -> no new messages to send" << std::endl;
+            // std::cout << "Service manager -> no new messages to send" << std::endl;
         }
     }
-    
 
     void goalManagerTimer_callback(){
         //add logic for choosing robot ID for given tasks
@@ -678,7 +677,7 @@ private:
     void checkButtonClicked() {
         if (gui_->addItem == true) {
             std::cout << "[MASTER] regnise addItem command" << std::endl;
-            // do something
+            // do something -TODO
             gui_->addItem = false;
         }
 

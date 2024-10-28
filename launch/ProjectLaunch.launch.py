@@ -27,7 +27,6 @@ def generate_launch_description():
             output='screen'
         ),
 
-
         #may need to be a delay before startig this node, but works for now
         Node(
             package='smart_factory',

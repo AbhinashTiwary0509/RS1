@@ -19,6 +19,8 @@
   <depend>rclcpp_action</depend>
   <depend>nav2_msgs</depend>
   <depend>libharu</depend>
+  <depend>yaml-cpp</depend>
+  <depend>opencv4</depend>
 
   
   <test_depend>ament_lint_auto</test_depend>
