@@ -51,6 +51,8 @@ private:
         message.y = p.y;
         message.z = p.z;
         cylinderPointPublisher_->publish(message);
+
+        std::cout << "ROBOT POS Xpos: " << XposGT_ << ", Ypos: " << YposGT_ << std::endl;
     }
 
     /// @brief Predicate function used to remove nan values from vector of geometry points
@@ -296,6 +298,7 @@ private:
 
     /// @brief calculates based on privately stored data if there is a cylinder within the range of the robot
     void findCylinder(){
+        cylinderFound_ = false;
         double cylinderRadius = 0.15; //radius of the cylinder being searched for
         int numPointsInCircles = 36*9;
         int numberOfPointsInLine = static_cast<int>(scanRange_/0.005); //point on line every 0.025m
@@ -336,31 +339,29 @@ private:
                 local_cylinderAcceptMatchesTolerance = cylinderAcceptMatchesTolerance;
             }
 
-            std::cout << "maxMatch: " << maxMatch << ", tol: " << local_cylinderAcceptMatchesTolerance << std::endl;
+            // std::cout << "maxMatch: " << maxMatch << ", tol: " << local_cylinderAcceptMatchesTolerance << std::endl;
 
             if(maxMatch > local_cylinderAcceptMatchesTolerance){
                 cylinderPos = maxMatchPoint;
-                std::cout << "Found Cylinder" << std::endl;
+                // std::cout << "Found Cylinder" << std::endl;
                 cylinderFound_ = true;
-            }else{
-                cylinderFound_ = false;
             }
         }
         
         //manage case of no cylinders found and cylinder found
         if(!cylinderFound_){
-            std::cout << "No Cylinders Found" << std::endl;
+            // std::cout << "No Cylinders Found" << std::endl;
             itrSinceCylinder_++;
         }else{
             itrSinceCylinder_ = 0;
-            std::cout << "Located Cylinder" << ", XPOS: " << cylinderPos.x << ", YPOS: " << cylinderPos.x << std::endl;
+            std::cout << "Located Cylinder" << ", XPOS: " << cylinderPos.x << ", YPOS: " << cylinderPos.y << std::endl;
             cylinderFound_ = true;
             cylinderX_ = cylinderPos.x;
             cylinderY_ = cylinderPos.y;
             publishCylinderPosition(cylinderPos);
             generateImage();
         }
-        std::cout << "Count since last cylinder: " << itrSinceCylinder_ << std::endl;
+        // std::cout << "Count since last cylinder: " << itrSinceCylinder_ << std::endl;
 
     }
 
@@ -378,18 +379,18 @@ private:
 
         auto mapOrigin = mapImgYAML["origin"].as<std::vector<double>>();
 
-        std::cout << "mapOriginX: " << mapOrigin.at(0) << ", mapOriginY: " << mapOrigin.at(1) << std::endl;
+        // std::cout << "mapOriginX: " << mapOrigin.at(0) << ", mapOriginY: " << mapOrigin.at(1) << std::endl;
 
         double deltaXpos = cylinderX_ - mapOrigin.at(0);
         double deltaYpos = cylinderY_ - mapOrigin.at(1); 
 
-        std::cout << "deltaXpos: " << deltaXpos << ", deltaYpos: " << deltaYpos << std::endl;
+        // std::cout << "deltaXpos: " << deltaXpos << ", deltaYpos: " << deltaYpos << std::endl;
 
         double mPerPixel = 0.0125; //meter per pixel
         int deltaPixelsX = deltaXpos/mPerPixel;
         int deltaPixelsY = -deltaYpos/mPerPixel;
 
-        std::cout << "deltaPixelsX: " << deltaPixelsX << ", deltaPixelsY: " << deltaPixelsY << std::endl;
+        // std::cout << "deltaPixelsX: " << deltaPixelsX << ", deltaPixelsY: " << deltaPixelsY << std::endl;
 
         int xPixel = 0 + deltaPixelsX;
         int yPixel = mapImg.rows + deltaPixelsY;
@@ -401,8 +402,14 @@ private:
         cv::Scalar color(0);      // White color for a grayscale image (0-255)
 
         cv::circle(mapImg, center, radius, color, thickness);
-        cv::imshow("Map with Cylinder", mapImg);
-        cv::waitKey(0); // Wait for a key press before closing
+        // cv::imshow("Map with Cylinder", mapImg);
+        // cv::waitKey(0); // Wait for a key press before closing
+
+        if (cv::imwrite("mapWithCylinder.png", mapImg)) {
+            std::cout << "Image saved successfully as " << "mapWithCylinder.png" << std::endl;
+        } else {
+            std::cerr << "Failed to save the image" << std::endl;
+        }
     }
 
 

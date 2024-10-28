@@ -466,6 +466,7 @@ MasterControlNode() : Node("MasterControlNode"){
     currentGoalSent_ = false;
     testingCount_ = 0;
     cylinderDetected_ = false;
+    goalCanceled_ = false;
 
     // Initialize the action client
     client_ptr_NAV2POSE = rclcpp_action::create_client<NavigateToPose>(this, "navigate_to_pose");
@@ -503,19 +504,43 @@ MasterControlNode() : Node("MasterControlNode"){
     robotInstance.setRobotID(0);
     robots_.push_back(robotInstance);
     targetRobotID_ = 0;
+
   }
 
 private:
 
     void cylinderSubscription_callback(const geometry_msgs::msg::Point::SharedPtr msg){
         std::cout << "[MASTER] received cylinder position" << std::endl;
-        //manage cylinder data
-        cylinderDetected_ = true;
-        geometry_msgs::msg::Point p;
-        p.x = msg->x;
-        p.y = msg->y;
-        p.z = msg->z;
-        cylinderPoints_.push_back(p);   
+
+        if(!goalCanceled_){
+            cancelledGoal_ = currentGoal_;
+            cancelCurrentGoal();
+            goalCanceled_ = true;
+        }else{
+            cylinderDetected_ = true;
+            geometry_msgs::msg::Point p;
+            p.x = msg->x;
+            p.y = msg->y;
+            p.z = msg->z;
+            cylinderPoints_.push_back(p);
+
+            if(cylinderPoints_.size() > 2){
+                //find the average position of the and use that for navigating around the cylinder
+                // avgCylPoint_
+                double sumX = 0;
+                double sumY = 0;
+                for(size_t i = 0; i < cylinderPoints_.size(); i++){
+                    sumX += cylinderPoints_.at(i).x;
+                    sumY += cylinderPoints_.at(i).y;
+                }
+                geometry_msgs::msg::Point avg;
+                avg.x = sumX/cylinderPoints_.size();
+                avg.y = sumY/cylinderPoints_.size();
+                avg.z = 0;
+                avgCylPoint_ = avg;
+                std::cout << "Averages cylinder position Xpos: " << avgCylPoint_.x << ", Ypos: " << avgCylPoint_.y << std::endl;
+            }
+        }
     }
 
     void init_gui(){
@@ -622,6 +647,7 @@ private:
         } else {
             RCLCPP_WARN(this->get_logger(), "No active goal to cancel");
         }
+        currentGoal_.nullify();
     }
 
     void serviceManagerTimer_callback(){
@@ -790,6 +816,10 @@ private:
     rclcpp::Subscription<geometry_msgs::msg::Point>::SharedPtr cylinderSubscription_;
     std::vector<geometry_msgs::msg::Point> cylinderPoints_;
     bool cylinderDetected_;
+
+    bool goalCanceled_;
+    goalStruct cancelledGoal_;
+    geometry_msgs::msg::Point avgCylPoint_;
 
 };
 
