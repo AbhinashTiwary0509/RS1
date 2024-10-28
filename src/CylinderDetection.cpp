@@ -2,6 +2,7 @@
 #include "std_msgs/msg/header.hpp"
 #include "sensor_msgs/msg/laser_scan.hpp"
 #include "nav_msgs/msg/occupancy_grid.hpp"
+#include <geometry_msgs/msg/point.hpp>
 #include "nav_msgs/msg/odometry.hpp"
 #include "yaml-cpp/yaml.h"
 #include <chrono>
@@ -29,9 +30,9 @@ public:
         laserSub_ = this->create_subscription<sensor_msgs::msg::LaserScan>("/scan", 10, std::bind(&CylinderDetection::scan_callback, this, std::placeholders::_1));
         odomSub_ = this->create_subscription<nav_msgs::msg::Odometry>("/odom", 10, std::bind(&CylinderDetection::odom_callback, this, std::placeholders::_1));
 
-        //TODO add publisher to contact with mastercontrolNode
         //publishes position if there is a cylinder
-
+        cylinderPointPublisher_ = this->create_publisher<geometry_msgs::msg::Point>("/cylinderPos", 10);
+        
         //inistialising variables
         XposGT_ = 0;
         YposGT_ = 0;
@@ -39,10 +40,19 @@ public:
         scanRange_ = 0;
         cylinderX_ = 0;
         cylinderY_ = 0;
-        cylinderFound_ = false;
+
+        itrSinceCylinder_ = 0;
     }
  
 private:
+    void publishCylinderPosition(geometry_msgs::msg::Point p){
+        auto message = geometry_msgs::msg::Point();
+        message.x = p.x;
+        message.y = p.y;
+        message.z = p.z;
+        cylinderPointPublisher_->publish(message);
+    }
+
     /// @brief Predicate function used to remove nan values from vector of geometry points
     /// @param point point to be considered
     /// @return false if either x or y is nan, otherwise true
@@ -253,7 +263,7 @@ private:
     /// @brief calculates if a given segment should be ignored as a possible cylinder based on if the average position of the segment is too far away from the robot
     /// @param segment the segment to ignored or not
     /// @return true for exclude false for include
-    bool excludeSegment(std::vector<geometry_msgs::msg::Point> segment){
+    double distanceToSegment(std::vector<geometry_msgs::msg::Point> segment){
         bool exclude = false;
 
         // printPoints(segment);
@@ -277,11 +287,11 @@ private:
         robotPos.z = 0;
 
         //find the distance between robot and segment
-        if(distanceBetweenPoints(segmentAvgPoint, robotPos) > 1.5){
-            exclude = true;
-        }
+        // if(distanceBetweenPoints(segmentAvgPoint, robotPos) > 1.5){
+        //     exclude = true;
+        // }
 
-        return exclude;
+        return distanceBetweenPoints(segmentAvgPoint, robotPos);
     }
 
     /// @brief calculates based on privately stored data if there is a cylinder within the range of the robot
@@ -291,7 +301,7 @@ private:
         int numberOfPointsInLine = static_cast<int>(scanRange_/0.005); //point on line every 0.025m
         double linePointSearchRadius = 0.008;
         int cylinderAcceptMatchesTolerance = 60; //the number of points found around a line point to be considered a cylinder
-        std::vector<geometry_msgs::msg::Point> cylinderPos;
+        geometry_msgs::msg::Point cylinderPos;
 
         // std::cout << "Analysing: " << segments_.size() << " segments" << std::endl;
         
@@ -321,27 +331,37 @@ private:
             // std::cout << "Max match in segment: " << maxMatch << std::endl;
 
              //cylinder found clause
-            if(maxMatch > cylinderAcceptMatchesTolerance){
-                if(!excludeSegment(segments_.at(i))){
-                    cylinderPos.push_back(maxMatchPoint);
-                }
+            int local_cylinderAcceptMatchesTolerance = (0.9*cylinderAcceptMatchesTolerance)/distanceToSegment(segments_.at(i));
+            if(local_cylinderAcceptMatchesTolerance > cylinderAcceptMatchesTolerance){
+                local_cylinderAcceptMatchesTolerance = cylinderAcceptMatchesTolerance;
+            }
+
+            std::cout << "maxMatch: " << maxMatch << ", tol: " << local_cylinderAcceptMatchesTolerance << std::endl;
+
+            if(maxMatch > local_cylinderAcceptMatchesTolerance){
+                cylinderPos = maxMatchPoint;
+                std::cout << "Found Cylinder" << std::endl;
+                cylinderFound_ = true;
+            }else{
+                cylinderFound_ = false;
             }
         }
         
         //manage case of no cylinders found and cylinder found
         if(!cylinderFound_){
-            printPoints(cylinderPos);
-            if(cylinderPos.size() == 0){
-                std::cout << "No Cylinders Found" << std::endl;
-            }else{
-                std::cout << "Located Cylinder" << std::endl;
-                cylinderFound_ = true;
-                printPoints(cylinderPos);
-                cylinderX_ = cylinderPos.at(0).x;
-                cylinderY_ = cylinderPos.at(0).y;
-                // generateImage();
-            }
+            std::cout << "No Cylinders Found" << std::endl;
+            itrSinceCylinder_++;
+        }else{
+            itrSinceCylinder_ = 0;
+            std::cout << "Located Cylinder" << ", XPOS: " << cylinderPos.x << ", YPOS: " << cylinderPos.x << std::endl;
+            cylinderFound_ = true;
+            cylinderX_ = cylinderPos.x;
+            cylinderY_ = cylinderPos.y;
+            publishCylinderPosition(cylinderPos);
+            generateImage();
         }
+        std::cout << "Count since last cylinder: " << itrSinceCylinder_ << std::endl;
+
     }
 
     /// @brief generates a cv::mat image with the cylinder overlayed at the correct position over the generated map of the environment
@@ -417,6 +437,10 @@ private:
 
     /// @brief grouping of points in to clusters of close points for processing
     std::vector<std::vector<geometry_msgs::msg::Point>> segments_;
+
+    rclcpp::Publisher<geometry_msgs::msg::Point>::SharedPtr cylinderPointPublisher_;
+
+    int itrSinceCylinder_;
 
 };
  

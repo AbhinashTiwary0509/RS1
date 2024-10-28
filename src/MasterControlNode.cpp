@@ -460,12 +460,12 @@ MasterControlNode() : Node("MasterControlNode"){
     init_gui();
     // //testing###############
 
-
     programStartXPos_ = 0;
     programStartYPos_ = 0;
     programStartYaw_ = 0;
     currentGoalSent_ = false;
     testingCount_ = 0;
+    cylinderDetected_ = false;
 
     // Initialize the action client
     client_ptr_NAV2POSE = rclcpp_action::create_client<NavigateToPose>(this, "navigate_to_pose");
@@ -492,7 +492,11 @@ MasterControlNode() : Node("MasterControlNode"){
     //timer used to call the blocking service call
     serviceManagerTimer_ = this->create_wall_timer(1000ms, std::bind(&MasterControlNode::serviceManagerTimer_callback, this));
 
+    //timer used to manage GUI
     checkButtonTimer = this->create_wall_timer(100ms, std::bind(&MasterControlNode::checkButtonClicked, this));
+
+    //subscriber used to recieve cylinder positions
+    cylinderSubscription_ = this->create_subscription<geometry_msgs::msg::Point>("/cylinderPos",10,std::bind(&MasterControlNode::cylinderSubscription_callback, this, std::placeholders::_1));
 
     //intialise robot
     robot robotInstance;
@@ -502,6 +506,17 @@ MasterControlNode() : Node("MasterControlNode"){
   }
 
 private:
+
+    void cylinderSubscription_callback(const geometry_msgs::msg::Point::SharedPtr msg){
+        std::cout << "[MASTER] received cylinder position" << std::endl;
+        //manage cylinder data
+        cylinderDetected_ = true;
+        geometry_msgs::msg::Point p;
+        p.x = msg->x;
+        p.y = msg->y;
+        p.z = msg->z;
+        cylinderPoints_.push_back(p);   
+    }
 
     void init_gui(){
         // Initialize GUI
@@ -771,6 +786,11 @@ private:
     GoalHandleNavigateToPose::SharedPtr current_goal_handle_;
 
     int testingCount_;
+
+    rclcpp::Subscription<geometry_msgs::msg::Point>::SharedPtr cylinderSubscription_;
+    std::vector<geometry_msgs::msg::Point> cylinderPoints_;
+    bool cylinderDetected_;
+
 };
 
 
@@ -782,3 +802,4 @@ int main(int argc, char *argv[]) {
     rclcpp::shutdown();
     return 0;
 }
+    rclcpp::Subscription<geometry_msgs::msg::Point>::SharedPtr subscription_;

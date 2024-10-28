@@ -22,18 +22,25 @@ def generate_launch_description():
 
         #launch nav2
         #ros2 launch turtlebot3_navigation2 navigation2.launch.py map:=/home/charles/roboStu1_ros2_ws/src/sprint2/map/my_map.yaml
-        ExecuteProcess(
-            cmd=['gnome-terminal', '--', 'ros2', 'launch', 'turtlebot3_navigation2', 'navigation2.launch.py', 'map:=/home/charles/roboStu1_ros2_ws/src/sprint3/map/my_map.yaml'],
-            output='screen'
-        ),
+        # ExecuteProcess(
+        #     cmd=['gnome-terminal', '--', 'ros2', 'launch', 'turtlebot3_navigation2', 'navigation2.launch.py', 'map:=/home/charles/roboStu1_ros2_ws/src/sprint3/map/my_map.yaml'],
+        #     output='screen'
+        # ),
 
         #may need to be a delay before startig this node, but works for now
+        # Node(
+        #     package='smart_factory',
+        #     executable='MasterControlNodeExe',
+        #     name='MasterControlNode',
+        #     output='screen',
+        # ),
+
         Node(
             package='smart_factory',
-            executable='MasterControlNodeExe',
-            name='MasterControlNode',
+            executable='CylinderDetectionExe',
+            name='CylinderDetectionNode',
             output='screen',
-        ),
+        )
     ])
 
 
