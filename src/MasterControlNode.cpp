@@ -24,12 +24,14 @@ enum robotStatus{
     INPUT_TARGET,
     OUTPUT_TARGET,
     WAITING_WITH_OBJECT,
+    CIRCLING_R,
     OTHER_R,
 };
 
 enum goalType{
     INPUT_GOAL = 0,
     OUTPUT_GOAL,
+    CIRCLING,
     OTHER,
 };
 
@@ -397,6 +399,8 @@ public:
             status_ = INPUT_TARGET;
         }else if(goal.type == OUTPUT_GOAL){
             status_ = OUTPUT_TARGET;
+        }else if(goal.type == CIRCLING){
+            status_ = CIRCLING_R;
         }else{
             status_ = OTHER_R;
         }
@@ -468,6 +472,12 @@ MasterControlNode() : Node("MasterControlNode"){
     cylinderDetected_ = false;
     goalCanceled_ = false;
     waitForCylindersSec_ = 20;
+    currentCylGoalIndex_ = 0;
+    circlingCylinder_ = false;
+
+    XposAMCL_ = 0;
+    YposAMCL_ = 0;
+    yawAMCL_ = 0;
 
     // Initialize the action client
     client_ptr_NAV2POSE = rclcpp_action::create_client<NavigateToPose>(this, "navigate_to_pose");
@@ -487,6 +497,10 @@ MasterControlNode() : Node("MasterControlNode"){
     }
 
     std::this_thread::sleep_for(std::chrono::seconds(2));
+
+    //subscriber to AMCL pose
+    AMCLsub_ = this->create_subscription<geometry_msgs::msg::PoseWithCovarianceStamped>(
+            "/amcl_pose", 10, std::bind(&MasterControlNode::AMCLsub_callback, this, std::placeholders::_1));
 
     //timer used to assign the current goal
     goalAssignerTimer_ = this->create_wall_timer(1000ms, std::bind(&MasterControlNode::goalManagerTimer_callback, this)); //timer runs every second and decides if goals should be assigned
@@ -509,6 +523,21 @@ MasterControlNode() : Node("MasterControlNode"){
   }
 
 private:
+    void AMCLsub_callback(const geometry_msgs::msg::PoseWithCovarianceStamped::SharedPtr msg) {
+        //bring in AMCLpose
+        XposAMCL_ = msg->pose.pose.position.x;
+        YposAMCL_ = msg->pose.pose.position.y;
+
+        double x = msg->pose.pose.orientation.x;
+        double y = msg->pose.pose.orientation.y;
+        double z = msg->pose.pose.orientation.z;
+        double w = msg->pose.pose.orientation.w;
+
+        yawAMCL_ = std::atan2(2.0*(w*z + x*y), 1.0 - 2.0*(y*y + z*z));
+
+        // std::cout << "XposAMCL_: " << XposAMCL_ << ", YposAMCL_" << YposAMCL_ << ", yawAMCL_" << yawAMCL_ << std::endl;
+    }
+
     int findElapsedSeconds(std::chrono::time_point<std::chrono::high_resolution_clock> start, std::chrono::time_point<std::chrono::high_resolution_clock> end){
         return std::chrono::duration_cast<std::chrono::seconds>(end - start).count();
     }
@@ -532,51 +561,142 @@ private:
             cancelCurrentGoal();
             goalCanceled_ = true;
         }else{
-            cylinderDetected_ = true;
-            geometry_msgs::msg::Point p;
-            p.x = msg->x;
-            p.y = msg->y;
-            p.z = msg->z;
-            cylinderPoints_.push_back(p);
+            if(!circlingCylinder_){
+                cylinderDetected_ = true;
+                geometry_msgs::msg::Point p;
+                p.x = msg->x;
+                p.y = msg->y;
+                p.z = msg->z;
+                cylinderPoints_.push_back(p);
 
-            if(cylinderPoints_.size() > 2){
-                //find the average position of the and use that for navigating around the cylinder
-                // avgCylPoint_
-                double sumX = 0;
-                double sumY = 0;
-                for(size_t i = 0; i < cylinderPoints_.size(); i++){
-                    sumX += cylinderPoints_.at(i).x;
-                    sumY += cylinderPoints_.at(i).y;
+                if(cylinderPoints_.size() > 2){
+                    //find the average position of the and use that for navigating around the cylinder
+                    // avgCylPoint_
+                    double sumX = 0;
+                    double sumY = 0;
+                    for(size_t i = 0; i < cylinderPoints_.size(); i++){
+                        sumX += cylinderPoints_.at(i).x;
+                        sumY += cylinderPoints_.at(i).y;
+                    }
+                    geometry_msgs::msg::Point avg;
+                    avg.x = sumX/cylinderPoints_.size();
+                    avg.y = sumY/cylinderPoints_.size();
+                    avg.z = 0;
+                    avgCylPoint_ = avg;
+                    std::cout << "locations: " << std::endl;
+                    printPoints(cylinderPoints_);
+                    calculateInspectProcedure();
                 }
-                geometry_msgs::msg::Point avg;
-                avg.x = sumX/cylinderPoints_.size();
-                avg.y = sumY/cylinderPoints_.size();
-                avg.z = 0;
-                avgCylPoint_ = avg;
-                std::cout << "locations: " << std::endl;
-                printPoints(cylinderPoints_);
-                calculateInspectProcedure();
-
             }
         }
     }
 
+    double adjustYaw(double rad, double delta, bool radOrDeg){ //-degrees for clockwise, positive for anti-clockwise - rad true if rads
+        double adjust;
+        if(radOrDeg){
+            adjust = delta;
+        }else{
+            adjust = delta*(M_PI/180);
+        }
+        
+        double radReturn = rad+adjust;
+        //normalise if it gets beyond PI
+        if(radReturn < M_PI){
+            radReturn += 2*M_PI;
+        }else if(radReturn > M_PI){
+            radReturn -= 2*M_PI;
+        }
+
+        return radReturn;
+    }
+
+    double yawFromP1toP2(double p1x, double p1y, double p2x, double p2y){
+        double dx = p2x - p1x;
+        double dy = p2y - p1y;
+        return atan2(dy, dx);
+    }
+
+    std::vector<double> genPointFromYawRadius(double xpos, double ypos, double yaw, double radius){
+        double new_x = xpos + radius*cos(yaw);
+        double new_y = ypos + radius*sin(yaw);
+        std::vector<double> ret;
+        ret.push_back(new_x);
+        ret.push_back(new_y);
+        return ret;
+    }
+    
+
     void calculateInspectProcedure(){
         //first calculate if we are confident in the position of the cylinder
         double sumDist = 0;
-        double sumDistTolerance = 0.0001; //0.3
+        double sumDistTolerance = 0.3; //0.3
         for(size_t i = 0; i < cylinderPoints_.size()-1; i++){
             sumDist += distanceBetweenPoints(cylinderPoints_.at(i), cylinderPoints_.at(i+1));
         }
         sumDist = sumDist/cylinderPoints_.size();
+
         if(sumDist > sumDistTolerance){
             //invalid set of cylinder positions
-            std::cout << "[MASTER] cylinder readings uncertain, continueing with program" << std::endl;
+            std::cout << "[MASTER] cylinder readings uncertain, continuing with program" << std::endl;
             uncancelGoal();
         }else{
-            //generate goals and progress with inspection
-        }
+            std::cout << "[MASTER] calculating goals to navigate cylinder" << std::endl;
+            //find the position of the cylinder as an average of the 3 recieved
+            // avgCylPoint_;
 
+            //find the yaw between the robot and the cylinder
+            double yawRobotToCyl = yawFromP1toP2(XposAMCL_, YposAMCL_, avgCylPoint_.x, avgCylPoint_.y);
+
+            double yawCylToRobot = yawFromP1toP2(avgCylPoint_.x, avgCylPoint_.y, XposAMCL_, YposAMCL_);
+            double goalRadius = 1.2;
+            std::vector<double> tempPos;
+
+            //generate the set of goals
+            goalStruct g1;
+            g1.yaw = adjustYaw(yawRobotToCyl, -90, false);
+            tempPos = genPointFromYawRadius(avgCylPoint_.x, avgCylPoint_.y, yawCylToRobot, goalRadius);
+            g1.xPos = tempPos.at(0);
+            g1.yPos = tempPos.at(1);
+            g1.type = CIRCLING;
+
+            goalStruct g2;
+            g2.yaw = yawRobotToCyl;
+            tempPos = genPointFromYawRadius(avgCylPoint_.x, avgCylPoint_.y, adjustYaw(yawCylToRobot, 90, false), goalRadius);
+            g2.xPos = tempPos.at(0);
+            g2.yPos = tempPos.at(1);
+            g2.type = CIRCLING;
+
+            goalStruct g3;
+            g3.yaw = adjustYaw(yawRobotToCyl, 90, false);
+            tempPos = genPointFromYawRadius(avgCylPoint_.x, avgCylPoint_.y, adjustYaw(yawCylToRobot, 180, false), goalRadius);
+            g3.xPos = tempPos.at(0);
+            g3.yPos = tempPos.at(1);
+            g3.type = CIRCLING;
+
+            goalStruct g4;
+            g4.yaw = adjustYaw(yawRobotToCyl, -180, false);
+            tempPos = genPointFromYawRadius(avgCylPoint_.x, avgCylPoint_.y, adjustYaw(yawCylToRobot, -90, false), goalRadius);
+            g4.xPos = tempPos.at(0);
+            g4.yPos = tempPos.at(1);
+            g4.type = CIRCLING;
+
+            goalStruct g5;
+            adjustYaw(yawRobotToCyl, -180, false);
+            tempPos = genPointFromYawRadius(avgCylPoint_.x, avgCylPoint_.y, yawCylToRobot, goalRadius);
+            g5.xPos = tempPos.at(0);
+            g5.yPos = tempPos.at(1);
+            g5.type = CIRCLING;
+
+            cylGoals_.clear();
+            cylGoals_.push_back(g1);
+            cylGoals_.push_back(g2);
+            cylGoals_.push_back(g3);
+            cylGoals_.push_back(g4);
+            cylGoals_.push_back(g5);
+            currentCylGoalIndex_ = 0;
+            circlingCylinder_ = true;
+            sendGoal(cylGoals_.at(0));
+        }
     }
 
     void init_gui(){
@@ -641,6 +761,7 @@ private:
                     case rclcpp_action::ResultCode::SUCCEEDED:
                         RCLCPP_INFO(this->get_logger(), "Goal COMPLETE");
                         robots_.at(targetRobotID_).flagGoalAsAchieved();
+                        incrementCirclingGoal();
                         currentGoal_.nullify();
                         this->current_goal_handle_ = nullptr;  // Clear the handle
                         break;
@@ -662,6 +783,12 @@ private:
             };
 
         client_ptr_NAV2POSE->async_send_goal(goal_msg, send_goal_options);
+    }
+
+    void incrementCirclingGoal(){
+        if(currentGoal_.type == CIRCLING){
+            currentCylGoalIndex_++;
+        }
     }
 
     void cancelCurrentGoal() {
@@ -700,6 +827,10 @@ private:
         auto currentTime = std::chrono::high_resolution_clock::now();
         if(cylinderDetected_ && findElapsedSeconds(CylinderFoundTime_, currentTime) > 20){
             uncancelGoal();
+        }
+
+        if(circlingCylinder_){
+            currentGoal_ = cylGoals_.at(currentCylGoalIndex_);
         }
 
         //if the goal is not nullified
@@ -759,6 +890,15 @@ private:
                 robots_.at(targetRobotID_).pickupDropoffObjectToggle(false);
                 robots_.at(targetRobotID_).setGoal(newManagerGoal);
             }
+            break;
+
+        case CIRCLING_R:
+            //get the goal
+            newManagerGoal = cylGoals_.at(currentCylGoalIndex_);
+
+            std::cout << "Sending Goal - CIRLCING cylinder" << std::endl;
+            robots_.at(targetRobotID_).setGoal(newManagerGoal);
+            queueGoal(newManagerGoal);
             break;
         
         default:
@@ -847,6 +987,8 @@ private:
 
     rclcpp::Publisher<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr initial_pose_publisher_;
 
+    rclcpp::Subscription<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr AMCLsub_;
+
     //object storage class instance
     ObjectStorage storage_;
 
@@ -875,6 +1017,13 @@ private:
     int waitForCylindersSec_;
     std::chrono::time_point<std::chrono::high_resolution_clock> CylinderFoundTime_;
 
+    double XposAMCL_;
+    double YposAMCL_;
+    double yawAMCL_;
+
+    std::vector<goalStruct> cylGoals_;
+    int currentCylGoalIndex_;
+    bool circlingCylinder_;
 };
 
 

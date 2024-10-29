@@ -374,7 +374,7 @@ private:
             tolMultiplier_ = defualtTolMultiplier_;
         }
 
-        std::cout << "tolMultiplier_: " << tolMultiplier_ << std::endl;
+        // std::cout << "tolMultiplier_: " << tolMultiplier_ << std::endl;
         
         for(size_t i = 0; i < segments_.size(); i++){
             int local_cylinderAcceptMatchesTolerance = (tolMultiplier_*cylinderAcceptMatchesTolerance)/distanceToSegment(segments_.at(i));
