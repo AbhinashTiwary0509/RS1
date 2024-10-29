@@ -8,6 +8,7 @@
 #include <cmath> 
 #include <iostream>
 #include <optional>
+#include <random>
 
 #include "SimpleGUI.hpp"
 #include <QApplication>
@@ -122,10 +123,14 @@ public:
     ObjectStorage(){
         //where the objects are at the start of the run
         //example inout area object
-        createObject(0, 1.6, -0.8);
-        createObject(1, 1, -0.8);
-        createObject(2, 0.4, -0.8);
-        
+        runningID_ = 0;
+
+        // createObject(1.6, -0.8);
+        // createObject(1, -0.8);
+        // createObject(0.4, -0.8);
+
+        createRandomObjects(5);
+
         //create all of the valid storage positions
         addStoragePosition(1.6, 1.4, deg2rad(180));
         addStoragePosition(1.6, 2.1, deg2rad(180));
@@ -264,11 +269,25 @@ public:
         std::cout << "Leaving generate PDF" << std::endl;
     }
 
-    void createObject(int ID, double xPos, double yPos){
+    void createRandomObjects(int n){
+        double yPos = -1;
+
+        for(int i = 0; i < n; i++){
+            std::random_device rd;
+            std::mt19937 gen(rd()); // Seed the generator
+            std::uniform_real_distribution<double> dist(-1.6, 1.3);
+            double xPos = dist(gen);
+            std::cout << xPos << std::endl;
+            createObject(xPos, yPos);
+        }
+    }
+
+    void createObject(double xPos, double yPos){
         ObjectStruct newObject;
         newObject.xPos = xPos;
         newObject.yPos = yPos;
-        newObject.ID = ID;
+        newObject.ID = runningID_;
+        runningID_++;
 
         //append to the list of objects in input zone
         objects_.push_back(newObject);
@@ -304,6 +323,7 @@ public:
             std::cout << "No object to target" << std::endl;
             return false;
         }else{
+            std::cout << "storing object" << std::endl;
             objects_.at(indexTarget).stored = true;
             Obj_ID = objects_.at(indexTarget).ID;
             goal.xPos = objects_.at(indexTarget).xPos;
@@ -313,7 +333,7 @@ public:
             objects_.at(indexTarget).targeted = true;
             return true;
         }
-        std::cout << "" << std::endl;
+        // std::cout << "" << std::endl;
         return false; //default
     }
 
@@ -325,8 +345,14 @@ public:
                 return true;
             }
         }
-        std::cout << "ERR_ No Storage Positions available" << std::endl;
+        std::cout << "No Storage Positions available" << std::endl;
         return false;
+    }
+
+    void reinstateObjects(){
+        for(size_t i = 0; i< objects_.size(); i++){
+            objects_.at(i).stored = false;
+        }
     }
 
 private:
@@ -352,6 +378,7 @@ private:
     std::vector<storagePosition> storagePositions_;
     PDFGenerator PDF_DAILY_;
     PDFGenerator PDF_LIVE_;
+    int runningID_;
 };
 
 class robot {
@@ -401,9 +428,16 @@ public:
             status_ = OUTPUT_TARGET;
         }else if(goal.type == CIRCLING){
             status_ = CIRCLING_R;
+        }else if(goal.type == OTHER){
+            status_ = OTHER_R;
         }else{
+            // std::cout << "INVALID status" << std::endl;
             status_ = OTHER_R;
         }
+    }
+
+    void setRobotStatus(robotStatus s){
+        status_ = s;
     }
 
     void flagGoalAsAchieved(){
@@ -552,14 +586,35 @@ private:
         }
     }
 
+    bool checkVisitedCylinders(geometry_msgs::msg::Point p){
+        double visitTolerance = 1;
+
+        bool ret = true;
+        for(size_t i = 0; i < visitiedCylinders_.size(); i++){
+            double dx = visitiedCylinders_.at(i).x - p.x;
+            double dy = visitiedCylinders_.at(i).y - p.y;
+            double dist = std::sqrt(dx*dx + dy*dy);
+            // std::cout << "distance from previous cylinder: " << dist << std::endl;
+            if(dist < visitTolerance){
+                ret = false;
+            }
+        }
+        return ret;
+    }
+
     void cylinderSubscription_callback(const geometry_msgs::msg::Point::SharedPtr msg){
         std::cout << "[MASTER] received cylinder position" << std::endl;
         CylinderFoundTime_ = std::chrono::high_resolution_clock::now();
 
         if(!goalCanceled_){
-            cancelledGoal_ = currentGoal_;
-            cancelCurrentGoal();
-            goalCanceled_ = true;
+            geometry_msgs::msg::Point p;
+            p.x = msg->x;
+            p.y = msg->y;
+            p.z = msg->z;
+            if(checkVisitedCylinders(avgCylPoint_)){
+                cancelledGoal_ = currentGoal_;
+                cancelCurrentGoal();
+            }
         }else{
             if(!circlingCylinder_){
                 cylinderDetected_ = true;
@@ -583,9 +638,14 @@ private:
                     avg.y = sumY/cylinderPoints_.size();
                     avg.z = 0;
                     avgCylPoint_ = avg;
-                    std::cout << "locations: " << std::endl;
-                    printPoints(cylinderPoints_);
-                    calculateInspectProcedure();
+                    if(checkVisitedCylinders(avgCylPoint_)){
+                        // std::cout << "locations: " << std::endl;
+                        // printPoints(cylinderPoints_);
+                        calculateInspectProcedure();
+                    }else{
+                        uncancelGoal();
+                    }
+                   
                 }
             }
         }
@@ -625,7 +685,6 @@ private:
         return ret;
     }
     
-
     void calculateInspectProcedure(){
         //first calculate if we are confident in the position of the cylinder
         double sumDist = 0;
@@ -648,8 +707,11 @@ private:
             double yawRobotToCyl = yawFromP1toP2(XposAMCL_, YposAMCL_, avgCylPoint_.x, avgCylPoint_.y);
 
             double yawCylToRobot = yawFromP1toP2(avgCylPoint_.x, avgCylPoint_.y, XposAMCL_, YposAMCL_);
-            double goalRadius = 1.2;
+            double goalRadius = 1;
             std::vector<double> tempPos;
+
+            //add the current cylinder to visited cylinders
+            visitiedCylinders_.push_back(avgCylPoint_);
 
             //generate the set of goals
             goalStruct g1;
@@ -811,11 +873,13 @@ private:
             RCLCPP_WARN(this->get_logger(), "No active goal to cancel");
         }
         currentGoal_.nullify();
+        goalCanceled_ = true;
     }
 
     void uncancelGoal(){
         cylinderPoints_.clear();
         cylinderDetected_ = false;
+        circlingCylinder_ = false;
 
         currentGoal_ = cancelledGoal_;
         goalCanceled_ = false;
@@ -830,7 +894,12 @@ private:
         }
 
         if(circlingCylinder_){
-            currentGoal_ = cylGoals_.at(currentCylGoalIndex_);
+            if(currentCylGoalIndex_ < static_cast<int>(cylGoals_.size())){
+                currentGoal_ = cylGoals_.at(currentCylGoalIndex_);
+            }else{
+                uncancelGoal();
+                storage_.reinstateObjects();
+            }
         }
 
         //if the goal is not nullified
@@ -851,23 +920,26 @@ private:
         bool availableObject = false;
         bool availableStorage = false;
         int objID = -1;
+
+        // std::cout << "robot status: " << robots_.at(targetRobotID_).getStatus() << std::endl;
         
-        switch (robots_.at(targetRobotID_).getStatus())
-        {
+        switch (robots_.at(targetRobotID_).getStatus()){
         case WAITING:
-            //send to input area box to pickup
-            availableObject = storage_.generateGoalForObjectPickup(newManagerGoal, objID);
-            if(!availableObject){
-                std::cout << "Robot waiting, no objects to move" << std::endl;
-                return; //nothing to do so return
-            }else{
-                //send goal
-                std::cout << "Sending Goal - PICKUP object" << std::endl;
-                robots_.at(targetRobotID_).setGoal(newManagerGoal);
-                queueGoal(newManagerGoal);
-                robots_.at(targetRobotID_).pickupDropoffObjectToggle(true, objID);
-                robots_.at(targetRobotID_).setGoal(newManagerGoal);
-            }
+            // if(!circlingCylinder_){
+                //send to input area box to pickup
+                availableObject = storage_.generateGoalForObjectPickup(newManagerGoal, objID);
+                if(!availableObject){
+                    std::cout << "Robot waiting, no objects to move" << std::endl;
+                    return; //nothing to do so return
+                }else{
+                    //send goal
+                    std::cout << "Sending Goal - PICKUP object" << std::endl;
+                    robots_.at(targetRobotID_).setGoal(newManagerGoal);
+                    queueGoal(newManagerGoal);
+                    robots_.at(targetRobotID_).pickupDropoffObjectToggle(true, objID);
+                    robots_.at(targetRobotID_).setGoal(newManagerGoal);
+                }
+            // }
             break;
 
         case INPUT_TARGET:
@@ -879,29 +951,36 @@ private:
             break;
 
         case WAITING_WITH_OBJECT:
-            availableStorage = storage_.getAvailableStoragePosition(newManagerGoal);
-            if(!availableStorage){
-                std::cout << "Robot waiting, no storage positions" << std::endl;
-                return;
-            }else{
-                std::cout << "Sending Goal - STORE object" << std::endl;
-                robots_.at(targetRobotID_).setGoal(newManagerGoal);
-                queueGoal(newManagerGoal);
-                robots_.at(targetRobotID_).pickupDropoffObjectToggle(false);
-                robots_.at(targetRobotID_).setGoal(newManagerGoal);
-            }
+            // if(!circlingCylinder_){
+                availableStorage = storage_.getAvailableStoragePosition(newManagerGoal);
+                if(!availableStorage){
+                    std::cout << "Robot waiting, no storage positions" << std::endl;
+                    return;
+                }else{
+                    std::cout << "Sending Goal - STORE object" << std::endl;
+                    robots_.at(targetRobotID_).setGoal(newManagerGoal);
+                    queueGoal(newManagerGoal);
+                    robots_.at(targetRobotID_).pickupDropoffObjectToggle(false);
+                    robots_.at(targetRobotID_).setGoal(newManagerGoal);
+                }
+            // }
             break;
 
         case CIRCLING_R:
             //get the goal
             newManagerGoal = cylGoals_.at(currentCylGoalIndex_);
 
-            std::cout << "Sending Goal - CIRLCING cylinder" << std::endl;
+            std::cout << "Sending Goal - CIRCLING cylinder" << std::endl;
             robots_.at(targetRobotID_).setGoal(newManagerGoal);
             queueGoal(newManagerGoal);
             break;
         
         default:
+            // std::cout << "robot not in state" << std::endl;
+            if(circlingCylinder_){
+                robots_.at(targetRobotID_).setRobotStatus(CIRCLING_R);
+            }
+
             break;
         }
     }
@@ -909,7 +988,7 @@ private:
     void checkButtonClicked() {
         if (gui_->addItem == true) {
             std::cout << "[MASTER] regnise addItem command" << std::endl;
-            // do something -TODO
+            storage_.createRandomObjects(1);
             gui_->addItem = false;
         }
 
@@ -962,9 +1041,10 @@ private:
  
     bool queueGoal(goalStruct newGoal){ //can only Queue one goal at a time
         if(newGoal == currentGoal_){
-            std::cout << "new goal is EQUAL to current goal ignoring" << std::endl;
+            // std::cout << "new goal is EQUAL to current goal ignoring" << std::endl;
             return false;
         }else{
+            // std::cout << "queueing goal" << std::endl;
             currentGoalSent_ = false;
             currentGoal_ = newGoal;
         }
@@ -1024,6 +1104,8 @@ private:
     std::vector<goalStruct> cylGoals_;
     int currentCylGoalIndex_;
     bool circlingCylinder_;
+
+    std::vector<geometry_msgs::msg::Point> visitiedCylinders_;
 };
 
 

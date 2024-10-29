@@ -484,7 +484,7 @@ private:
         // cv::waitKey(0); // Wait for a key press before closing
 
         if (cv::imwrite("mapWithCylinder.png", mapImg)) {
-            std::cout << "Image saved successfully as " << "mapWithCylinder.png" << std::endl;
+            // std::cout << "Image saved successfully as " << "mapWithCylinder.png" << std::endl;
         } else {
             std::cerr << "Failed to save the image" << std::endl;
         }
