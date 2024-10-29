@@ -42,9 +42,37 @@ public:
         cylinderY_ = 0;
 
         itrSinceCylinder_ = 0;
+        lowTolCylinder_ = false;
+        lowTolCylinderCount_ = 0;
+        defualtTolMultiplier_ = 0.9;
+        tolMultiplier_ = defualtTolMultiplier_;
+        waitForCylindersSec_ = 20;
+
+        excluder_ = {
+            {10,10},
+            {4.5, 0.4},
+            {-2.1, -1.3},
+            {-2.1, 0.9},
+            {0, 0.9},
+            {2, 0.9},
+            {1.9, 5.12},
+            {0, 4.7},
+            {-2, 4.7},
+            {-2, 5.8},
+            {0, 5.9},
+            {2, 5.9},
+            {2, 9.7},
+            {0, 9.7},
+            {-2.1, 9.7},
+            {2, -1.3}
+        };
     }
  
 private:
+    int findElapsedSeconds(std::chrono::time_point<std::chrono::high_resolution_clock> start, std::chrono::time_point<std::chrono::high_resolution_clock> end){
+        return std::chrono::duration_cast<std::chrono::seconds>(end - start).count();
+    }
+
     void publishCylinderPosition(geometry_msgs::msg::Point p){
         auto message = geometry_msgs::msg::Point();
         message.x = p.x;
@@ -52,7 +80,7 @@ private:
         message.z = p.z;
         cylinderPointPublisher_->publish(message);
 
-        std::cout << "ROBOT POS Xpos: " << XposGT_ << ", Ypos: " << YposGT_ << std::endl;
+        // std::cout << "ROBOT POS Xpos: " << XposGT_ << ", Ypos: " << YposGT_ << std::endl;
     }
 
     /// @brief Predicate function used to remove nan values from vector of geometry points
@@ -135,19 +163,20 @@ private:
 
         //fixes head on edgecase
         //compare the first and last points to decide if the first and last segments should be combined
-        const std::vector<geometry_msgs::msg::Point>& lastSegment = segments.back();
-        int lastIndex = lastSegment.size() - 1;
-        geometry_msgs::msg::Point lastPoint = lastSegment.at(lastIndex);
-        geometry_msgs::msg::Point firstPoint = segments.at(0).at(0);
+        // const std::vector<geometry_msgs::msg::Point>& lastSegment = segments.back();
+        // int lastIndex = lastSegment.size() - 1;
+        // geometry_msgs::msg::Point lastPoint = lastSegment.at(lastIndex);
+        // geometry_msgs::msg::Point firstPoint = segments.at(0).at(0);
 
-        //if the two points are close enough combine the segments
-        if(distanceBetweenPoints(lastPoint, firstPoint) < segmentTolerance){
-            //add the last segment to the start of the first segment - Prepend last segment to first segment
-            segments.at(0).insert(segments.at(0).begin(), segments.back().begin(), segments.back().end());
+        // //if the two points are close enough combine the segments
+        // if(distanceBetweenPoints(lastPoint, firstPoint) < segmentTolerance){
+        //     std::cout << "COMBINING FIRST AND LAST SEGMENT" << std::endl;
+        //     //add the last segment to the start of the first segment - Prepend last segment to first segment
+        //     segments.at(0).insert(segments.at(0).begin(), segments.back().begin(), segments.back().end());
 
-            //remove the last segment
-            segments.pop_back();
-        }
+        //     //remove the last segment
+        //     segments.pop_back();
+        // }
 
         segments_ = segments;
         findCylinder();
@@ -266,8 +295,6 @@ private:
     /// @param segment the segment to ignored or not
     /// @return true for exclude false for include
     double distanceToSegment(std::vector<geometry_msgs::msg::Point> segment){
-        bool exclude = false;
-
         // printPoints(segment);
         //if the segment is too far away on average exclude
         //find the average of all points
@@ -288,12 +315,35 @@ private:
         robotPos.y = YposGT_;
         robotPos.z = 0;
 
-        //find the distance between robot and segment
-        // if(distanceBetweenPoints(segmentAvgPoint, robotPos) > 1.5){
-        //     exclude = true;
-        // }
-
         return distanceBetweenPoints(segmentAvgPoint, robotPos);
+    }
+
+    bool excludeSegment(std::vector<geometry_msgs::msg::Point> seg){
+        //find the avg point of segment
+        double sumX = 0;
+        double sumY = 0;
+        for(const auto& point : seg){
+            sumX += point.x;
+            sumY += point.y;
+        }
+
+        std::vector<double> segmentAvgPoint;
+        segmentAvgPoint.push_back(sumX/seg.size());
+        segmentAvgPoint.push_back(sumY/seg.size());
+
+        //
+        bool exclude = false;
+        double closeTolerance = 0.6;
+        for(size_t i = 0; i < excluder_.size(); i++){
+            double dx = excluder_.at(i).at(0) - segmentAvgPoint.at(0);
+            double dy = excluder_.at(i).at(1) - segmentAvgPoint.at(1);
+            double dist = std::sqrt(dx * dx + dy * dy);
+
+            if(dist < closeTolerance){
+                exclude = true;
+            }
+        }
+        return exclude;
     }
 
     /// @brief calculates based on privately stored data if there is a cylinder within the range of the robot
@@ -305,10 +355,30 @@ private:
         double linePointSearchRadius = 0.008;
         int cylinderAcceptMatchesTolerance = 60; //the number of points found around a line point to be considered a cylinder
         geometry_msgs::msg::Point cylinderPos;
+        geometry_msgs::msg::Point bestOptionPoint;
 
-        // std::cout << "Analysing: " << segments_.size() << " segments" << std::endl;
+        auto currentTime = std::chrono::high_resolution_clock::now();
+        if(findElapsedSeconds(CylinderFoundTimeL_, currentTime)<20){
+            if(lowTolCylinder_){
+                if(tolMultiplier_ > 0.8){
+                    tolMultiplier_= 0.8;
+                }else{
+                    if(tolMultiplier_ > 0.6){
+                        tolMultiplier_ -= 0.02;
+                    }
+                }
+            }else{
+                tolMultiplier_ = defualtTolMultiplier_;
+            }
+        }else{
+            tolMultiplier_ = defualtTolMultiplier_;
+        }
+
+        std::cout << "tolMultiplier_: " << tolMultiplier_ << std::endl;
         
         for(size_t i = 0; i < segments_.size(); i++){
+            int local_cylinderAcceptMatchesTolerance = (tolMultiplier_*cylinderAcceptMatchesTolerance)/distanceToSegment(segments_.at(i));
+
             std::vector<geometry_msgs::msg::Point> lineGenPoints = generatePointsAlongLine(XposGT_, YposGT_, yawofSegment(segments_.at(i)), numberOfPointsInLine);
             //for each segment
             std::vector<geometry_msgs::msg::Point> circleGenPoints;
@@ -334,23 +404,22 @@ private:
             // std::cout << "Max match in segment: " << maxMatch << std::endl;
 
              //cylinder found clause
-            int local_cylinderAcceptMatchesTolerance = (0.9*cylinderAcceptMatchesTolerance)/distanceToSegment(segments_.at(i));
-            if(local_cylinderAcceptMatchesTolerance > cylinderAcceptMatchesTolerance){
-                local_cylinderAcceptMatchesTolerance = cylinderAcceptMatchesTolerance;
-            }
+            // if(local_cylinderAcceptMatchesTolerance > cylinderAcceptMatchesTolerance){
+            //     local_cylinderAcceptMatchesTolerance = cylinderAcceptMatchesTolerance;
+            // }
 
-            // std::cout << "maxMatch: " << maxMatch << ", tol: " << local_cylinderAcceptMatchesTolerance << std::endl;
-
-            if(maxMatch > local_cylinderAcceptMatchesTolerance){
+            if(maxMatch > local_cylinderAcceptMatchesTolerance && !excludeSegment(segments_.at(i))&& distanceToSegment(segments_.at(i)) < 2){
                 cylinderPos = maxMatchPoint;
                 // std::cout << "Found Cylinder" << std::endl;
                 cylinderFound_ = true;
+                lowTolCylinder_ = true;
+                CylinderFoundTimeL_ = std::chrono::high_resolution_clock::now();
             }
         }
         
         //manage case of no cylinders found and cylinder found
         if(!cylinderFound_){
-            // std::cout << "No Cylinders Found" << std::endl;
+            // std::cout << "No Cylinders Found" << std::endl;            
             itrSinceCylinder_++;
         }else{
             itrSinceCylinder_ = 0;
@@ -360,6 +429,15 @@ private:
             cylinderY_ = cylinderPos.y;
             publishCylinderPosition(cylinderPos);
             generateImage();
+
+            if(lowTolCylinder_){
+                // publishCylinderPosition(bestOptionPoint);
+                lowTolCylinderCount_++;
+                if(lowTolCylinderCount_ > 3){
+                    lowTolCylinder_ = false;
+                    lowTolCylinderCount_ = 0;
+                }
+            }
         }
         // std::cout << "Count since last cylinder: " << itrSinceCylinder_ << std::endl;
 
@@ -412,7 +490,6 @@ private:
         }
     }
 
-
 private:
 
     /// @brief laserscan subscription variable 
@@ -439,8 +516,11 @@ private:
     /// @brief cylinder global y position
     double cylinderY_;
 
-    /// @brief ture for if a cylinder has already been found
+    /// @brief true for if a cylinder has already been found
     bool cylinderFound_;
+
+    bool lowTolCylinder_;
+    int lowTolCylinderCount_;
 
     /// @brief grouping of points in to clusters of close points for processing
     std::vector<std::vector<geometry_msgs::msg::Point>> segments_;
@@ -449,6 +529,13 @@ private:
 
     int itrSinceCylinder_;
 
+    double tolMultiplier_;
+    double defualtTolMultiplier_;
+
+    std::vector<std::vector<double>> excluder_;
+
+    std::chrono::time_point<std::chrono::high_resolution_clock> CylinderFoundTimeL_;
+    int waitForCylindersSec_;
 };
  
 int main(int argc, char *argv[]) {

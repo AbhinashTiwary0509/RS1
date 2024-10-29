@@ -467,6 +467,7 @@ MasterControlNode() : Node("MasterControlNode"){
     testingCount_ = 0;
     cylinderDetected_ = false;
     goalCanceled_ = false;
+    waitForCylindersSec_ = 20;
 
     // Initialize the action client
     client_ptr_NAV2POSE = rclcpp_action::create_client<NavigateToPose>(this, "navigate_to_pose");
@@ -508,9 +509,23 @@ MasterControlNode() : Node("MasterControlNode"){
   }
 
 private:
+    int findElapsedSeconds(std::chrono::time_point<std::chrono::high_resolution_clock> start, std::chrono::time_point<std::chrono::high_resolution_clock> end){
+        return std::chrono::duration_cast<std::chrono::seconds>(end - start).count();
+    }
+
+    double distanceBetweenPoints(geometry_msgs::msg::Point p1, geometry_msgs::msg::Point p2){
+        return std::hypot(p1.x - p2.x, p1.y - p2.y);
+    }
+
+    void printPoints(std::vector<geometry_msgs::msg::Point> pSet){
+        for(size_t i = 0; i < pSet.size(); i++){
+            std::cout << "Xpos: " << pSet.at(i).x << ", Ypos: " << pSet.at(i).y << std::endl;
+        }
+    }
 
     void cylinderSubscription_callback(const geometry_msgs::msg::Point::SharedPtr msg){
         std::cout << "[MASTER] received cylinder position" << std::endl;
+        CylinderFoundTime_ = std::chrono::high_resolution_clock::now();
 
         if(!goalCanceled_){
             cancelledGoal_ = currentGoal_;
@@ -538,9 +553,30 @@ private:
                 avg.y = sumY/cylinderPoints_.size();
                 avg.z = 0;
                 avgCylPoint_ = avg;
-                std::cout << "Averages cylinder position Xpos: " << avgCylPoint_.x << ", Ypos: " << avgCylPoint_.y << std::endl;
+                std::cout << "locations: " << std::endl;
+                printPoints(cylinderPoints_);
+                calculateInspectProcedure();
+
             }
         }
+    }
+
+    void calculateInspectProcedure(){
+        //first calculate if we are confident in the position of the cylinder
+        double sumDist = 0;
+        double sumDistTolerance = 0.0001; //0.3
+        for(size_t i = 0; i < cylinderPoints_.size()-1; i++){
+            sumDist += distanceBetweenPoints(cylinderPoints_.at(i), cylinderPoints_.at(i+1));
+        }
+        sumDist = sumDist/cylinderPoints_.size();
+        if(sumDist > sumDistTolerance){
+            //invalid set of cylinder positions
+            std::cout << "[MASTER] cylinder readings uncertain, continueing with program" << std::endl;
+            uncancelGoal();
+        }else{
+            //generate goals and progress with inspection
+        }
+
     }
 
     void init_gui(){
@@ -650,7 +686,22 @@ private:
         currentGoal_.nullify();
     }
 
+    void uncancelGoal(){
+        cylinderPoints_.clear();
+        cylinderDetected_ = false;
+
+        currentGoal_ = cancelledGoal_;
+        goalCanceled_ = false;
+        sendGoal(currentGoal_);
+    }
+
     void serviceManagerTimer_callback(){
+        //check for cylinder search timeout
+        auto currentTime = std::chrono::high_resolution_clock::now();
+        if(cylinderDetected_ && findElapsedSeconds(CylinderFoundTime_, currentTime) > 20){
+            uncancelGoal();
+        }
+
         //if the goal is not nullified
         if(currentGoal_.nullified == false && currentGoalSent_ == false){
             //we can send the current goal
@@ -820,6 +871,9 @@ private:
     bool goalCanceled_;
     goalStruct cancelledGoal_;
     geometry_msgs::msg::Point avgCylPoint_;
+
+    int waitForCylindersSec_;
+    std::chrono::time_point<std::chrono::high_resolution_clock> CylinderFoundTime_;
 
 };
 
