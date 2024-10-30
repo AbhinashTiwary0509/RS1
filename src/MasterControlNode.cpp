@@ -25,6 +25,7 @@ enum robotStatus{
     INPUT_TARGET,
     OUTPUT_TARGET,
     WAITING_WITH_OBJECT,
+    CIRCLING_NO_GOAL,
     CIRCLING_R,
     OTHER_R,
 };
@@ -427,7 +428,7 @@ public:
         }else if(goal.type == OUTPUT_GOAL){
             status_ = OUTPUT_TARGET;
         }else if(goal.type == CIRCLING){
-            status_ = CIRCLING_R;
+            status_ = CIRCLING_NO_GOAL;
         }else if(goal.type == OTHER){
             status_ = OTHER_R;
         }else{
@@ -789,6 +790,9 @@ private:
     }
 
     void sendGoal(goalStruct goal){
+        if(goal.type == CIRCLING){
+            robots_.at(targetRobotID_).setRobotStatus(CIRCLING_R);
+        }
         // Create a goal message with a target pose
         auto goal_msg = NavigateToPose::Goal();
         goal_msg.pose.header.frame_id = "map";  // Use 'map' as the reference frame
@@ -966,7 +970,7 @@ private:
             // }
             break;
 
-        case CIRCLING_R:
+        case CIRCLING_NO_GOAL:
             //get the goal
             newManagerGoal = cylGoals_.at(currentCylGoalIndex_);
 
@@ -974,13 +978,13 @@ private:
             robots_.at(targetRobotID_).setGoal(newManagerGoal);
             queueGoal(newManagerGoal);
             break;
-        
-        default:
-            // std::cout << "robot not in state" << std::endl;
-            if(circlingCylinder_){
-                robots_.at(targetRobotID_).setRobotStatus(CIRCLING_R);
-            }
 
+        case CIRCLING_R:
+            return; //skip entire function robot already heading to goal
+            break;
+
+        default:
+            return;
             break;
         }
     }

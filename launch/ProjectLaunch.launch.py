@@ -27,6 +27,8 @@ def generate_launch_description():
             output='screen'
         ),
 
+        #/home/charles/roboStu1_ros2_ws/src/sprint3/map/my_map.yaml
+
         #may need to be a delay before startig this node, but works for now
         Node(
             package='smart_factory',
